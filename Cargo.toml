@@ -1,0 +1,3 @@
+[workspace]
+members = [ "rdocv-pdf" ]
+resolver = "2"
