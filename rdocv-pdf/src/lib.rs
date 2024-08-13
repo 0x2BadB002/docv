@@ -126,6 +126,7 @@ impl PDFFile {
         match token.as_rule() {
             Rule::xref_old => self.parse_xref_table(token),
             Rule::stream => todo!(), // TODO: Parse xref table as a dictionary
+            Rule::trailer => todo!(), // TODO: Parse trailer part
             _ => Err(ParserError::InvalidXref(token.to_string())),
         }
     }
@@ -133,29 +134,34 @@ impl PDFFile {
     fn parse_xref_table(&mut self, token: Pair<Rule>) -> Result<(), ParserError> {
         for token in token.into_inner() {
             let mut token = token.into_inner().next().unwrap().into_inner();
+
+            let offset = token
+                .next()
+                .ok_or(ParserError::InvalidXref("Expected offset".to_string()))?
+                .as_str()
+                .parse::<usize>()?;
+
+            let gen_num = token
+                .next()
+                .ok_or(ParserError::InvalidXref("Expected gen. number".to_string()))?
+                .as_str()
+                .parse::<usize>()?;
+
+            let occupied = token
+                .next()
+                .ok_or(ParserError::InvalidXref(
+                    "Expected occupied flag".to_string(),
+                ))?
+                .as_str()
+                .eq("n");
+
             let entry = XrefEntry {
-                offset: token
-                    .next()
-                    .ok_or(ParserError::InvalidXref("Expected offset".to_string()))?
-                    .as_str()
-                    .parse::<usize>()?,
-
-                gen_num: token
-                    .next()
-                    .ok_or(ParserError::InvalidXref("Expected gen. number".to_string()))?
-                    .as_str()
-                    .parse::<usize>()?,
-
-                occupied: token
-                    .next()
-                    .ok_or(ParserError::InvalidXref(
-                        "Expected occupied flag".to_string(),
-                    ))?
-                    .as_str()
-                    .eq("n"),
+                offset,
+                gen_num,
+                occupied,
             };
 
-            self.xref_table.entries.push(entry);
+            self.xref_table.entries.push(entry)
         }
         Ok(())
     }

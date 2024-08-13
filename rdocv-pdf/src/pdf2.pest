@@ -38,11 +38,9 @@ xref_entry      = ${ xref_offset ~ " " ~ xref_generation ~ " " ~ xref_in_use ~ "
 xref_subsection = @{ integer ~ " " ~ integer ~ NEWLINE ~ xref_entry* }
 xref_old        = ${ "xref" ~ NEWLINE ~ xref_subsection+ }
 
-data_before_xref = _{ (!("<<" | "xref") ~ ANY)* }
+trailer = !{ "trailer" ~ dictionary }
 
-xref = !{ SOI ~ data_before_xref ~ (xref_old | stream) ~ EOI }
-
-trailer = !{ SOI ~ "trailer" ~ dictionary ~ EOI }
+xref = !{ SOI ~ (xref_old | stream) ~ trailer }
 
 data_before_startxref = _{ (!"startxref" ~ ANY)* }
 last_xref_pos         = @{ ASCII_DIGIT+ }
