@@ -1,0 +1,56 @@
+COMMENT    = ${ "%" ~ (!NEWLINE ~ ANY)* }
+WHITESPACE = _{ "\x00" | "\t" | "\n" | "\r" | "\x0C" | " " | "\r\n" }
+
+boolean = @{ "true" | "false" }
+null    = @{ "null" }
+
+name_data = @{ (!("/" | "[" | ">>" | WHITESPACE) ~ ANY)+ }
+name      = ${ "/" ~ name_data? }
+
+integer = ${ ("+" | "-")? ~ ASCII_DIGIT+ }
+real    = @{ ("+" | "-")? ~ ((ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT*) | (ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+)) }
+numeric = ${ real | integer }
+
+literal_data = @{ (!("(" | ")") ~ ANY)* ~ (literal_string+ ~ (!("(" | ")") ~ ANY)*)* }
+hex_data     = @{ (WHITESPACE* ~ ASCII_HEX_DIGIT+ ~ WHITESPACE*)+ }
+
+literal_string = ${ "(" ~ literal_data? ~ ")" }
+hex_string     = ${ "<" ~ hex_data? ~ ">" }
+string         = ${ literal_string | hex_string }
+
+array = !{ "[" ~ object* ~ "]" }
+
+pair       = !{ name ~ object }
+dictionary = !{ "<<" ~ pair* ~ ">>" }
+
+/// NOT PART OF PDF STANDARD
+chunk_id = ${ ASCII_DIGIT+ }
+
+/// NOT PART OF PDF STANDARD
+chunk = ${ "{ID" ~ chunk_id ~ "}" }
+
+stream_data = @{ (!(("\r\n" | "\n") ~ "endstream") ~ chunk)* }
+stream      = ${ dictionary ~ WHITESPACE* ~ "stream" ~ ("\r\n" | "\n") ~ stream_data ~ ("\r\n" | "\n") ~ "endstream" }
+
+indirect_definition = !{ integer ~ integer ~ "obj" ~ object ~ "endobj" }
+indirect_reference  = !{ integer ~ integer ~ "R" }
+
+object = ${ indirect_definition | indirect_reference | stream | dictionary | array | string | name | numeric | boolean | null }
+
+xref_offset     = @{ ASCII_DIGIT{10} }
+xref_generation = @{ ASCII_DIGIT{5} }
+xref_in_use     = @{ "n" | "f" }
+xref_entry      = ${ xref_offset ~ " " ~ xref_generation ~ " " ~ xref_in_use ~ "\r\n" }
+xref_subsection = @{ integer ~ " " ~ integer ~ NEWLINE ~ xref_entry* }
+xref_old        = ${ "xref" ~ NEWLINE ~ xref_subsection+ }
+
+trailer = !{ "trailer" ~ dictionary }
+
+xref = !{ SOI ~ (xref_old ~ trailer) | indirect_definition }
+
+data_before_startxref = _{ (!"startxref" ~ ANY)* }
+last_xref_pos         = @{ ASCII_DIGIT+ }
+
+startxref = !{ SOI ~ data_before_startxref ~ "startxref" ~ last_xref_pos ~ EOI }
+
+/* vim: set filetype=pest : */

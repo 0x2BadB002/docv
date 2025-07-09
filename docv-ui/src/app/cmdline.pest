@@ -1,0 +1,11 @@
+COMMENT    = _{ "#" ~ (!"\n" ~ ANY)* }
+WHITESPACE = _{ " " }
+
+quit = !{ "quit" | "q" }
+open = !{ "open" | "o" }
+
+verb = !{ quit | open }
+
+arg = !{ (!WHITESPACE ~ ANY)+ }
+
+line = { SOI ~ ":" ~ verb ~ arg* ~ EOI }
