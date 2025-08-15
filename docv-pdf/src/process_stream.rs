@@ -75,8 +75,7 @@ fn apply_filter(
         StreamFilterType::None => Ok(data.to_vec()),
         StreamFilterType::FlateDecode => {
             let mut decoder = ZlibDecoder::new(data);
-            let mut data =
-                Vec::<u8>::with_capacity(content_length.ok_or(Error::InvalidStreamLength)?);
+            let mut data = Vec::with_capacity(content_length.ok_or(Error::InvalidStreamLength)?);
 
             decoder.read_to_end(&mut data)?;
 
