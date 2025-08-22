@@ -1,5 +1,5 @@
 [package]
-name = "docv-pdf-new"
+name = "docv-pdf"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,4 +7,4 @@ edition = "2024"
 flate2 = { version = "1.1.2", features = ["zlib"] }
 memmap2 = "0.9.5"
 nom = "8.0.0"
-thiserror = "2.0.12"
+snafu = { version = "0.8.6", features = ["rust_1_81"] }

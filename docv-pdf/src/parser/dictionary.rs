@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use nom::{
     IResult, Parser,
     branch::alt,
@@ -6,23 +8,14 @@ use nom::{
     sequence::{delimited, preceded},
 };
 
-use crate::parser::{
-    Object,
-    name::name,
-    object,
-    whitespace::{comment, eol, whitespace},
+use crate::{
+    parser::{
+        name::name,
+        object::object,
+        whitespace::{comment, eol, whitespace},
+    },
+    types::Dictionary,
 };
-
-/// Represents a single key-value pair in a PDF dictionary.
-///
-/// PDF dictionaries consist of name-object pairs where:
-/// - `key` is a PDF name (always starts with '/')
-/// - `value` is any valid PDF object
-#[derive(Debug, PartialEq, Clone)]
-pub struct DictionaryRecord {
-    pub key: String,
-    pub value: Object,
-}
 
 /// Parses a PDF dictionary from the input.
 ///
@@ -47,19 +40,20 @@ pub struct DictionaryRecord {
 /// `IResult` containing:
 /// - Remaining input after parsing
 /// - Iterator over `DictionaryRecord` key-value pairs on success
-pub fn dictionary(input: &[u8]) -> IResult<&[u8], impl Iterator<Item = DictionaryRecord>> {
+pub fn dictionary(input: &[u8]) -> IResult<&[u8], Dictionary> {
     let key_value = (
         name,
         preceded(many1(alt((whitespace, comment, eol))), object),
-    )
-        .map(|(key, value)| DictionaryRecord { key, value });
+    );
 
     let contents = many0(delimited(
         many0(alt((whitespace, comment, eol))),
         key_value,
         many0(alt((whitespace, comment, eol))),
     ))
-    .map(|res| res.into_iter());
+    .map(|res| Dictionary {
+        records: BTreeMap::from_iter(res.iter().cloned()),
+    });
 
     delimited(tag("<<"), contents, tag(">>")).parse(input)
 }
@@ -67,8 +61,8 @@ pub fn dictionary(input: &[u8]) -> IResult<&[u8], impl Iterator<Item = Dictionar
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{Numeric, Object, PdfString};
-    use nom::error::dbg_dmp;
+    use crate::types::{Numeric, Object, PdfString};
+    use std::collections::BTreeMap;
 
     #[test]
     fn test_dictionary_parser() {
@@ -77,7 +71,7 @@ mod tests {
             name: &'static str,
             input: &'static [u8],
             expected: bool,
-            expected_result: Option<Vec<DictionaryRecord>>,
+            expected_result: Option<Dictionary>,
             expected_remainder: Option<&'static [u8]>,
         }
 
@@ -87,90 +81,92 @@ mod tests {
                 name: "valid empty dictionary",
                 input: b"<<>>",
                 expected: true,
-                expected_result: Some(vec![]),
+                expected_result: Some(Dictionary {
+                    records: BTreeMap::new(),
+                }),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid dictionary with one key-value pair",
                 input: b"<< /Key 42 >>",
                 expected: true,
-                expected_result: Some(vec![DictionaryRecord {
-                    key: "Key".to_string(),
-                    value: Object::Numeric(Numeric::Integer(42)),
-                }]),
+                expected_result: Some(Dictionary {
+                    records: BTreeMap::from([(
+                        "Key".to_string(),
+                        Object::Numeric(Numeric::Integer(42)),
+                    )]),
+                }),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid dictionary with multiple key-value pairs",
                 input: b"<< /Key1 1 /Key2 (two) /Key3 /three >>",
                 expected: true,
-                expected_result: Some(vec![
-                    DictionaryRecord {
-                        key: "Key1".to_string(),
-                        value: Object::Numeric(Numeric::Integer(1)),
-                    },
-                    DictionaryRecord {
-                        key: "Key2".to_string(),
-                        value: Object::String(PdfString::Literal("two".to_string())),
-                    },
-                    DictionaryRecord {
-                        key: "Key3".to_string(),
-                        value: Object::Name("three".to_string()),
-                    },
-                ]),
+                expected_result: Some(Dictionary {
+                    records: BTreeMap::from([
+                        ("Key1".to_string(), Object::Numeric(Numeric::Integer(1))),
+                        (
+                            "Key2".to_string(),
+                            Object::String(PdfString::Literal("two".to_string())),
+                        ),
+                        ("Key3".to_string(), Object::Name("three".to_string())),
+                    ]),
+                }),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid dictionary with comments and whitespace",
                 input: b"<< % comment\n /Key1 1 % another\n /Key2 (two) \t /Key3 /three \n>>",
                 expected: true,
-                expected_result: Some(vec![
-                    DictionaryRecord {
-                        key: "Key1".to_string(),
-                        value: Object::Numeric(Numeric::Integer(1)),
-                    },
-                    DictionaryRecord {
-                        key: "Key2".to_string(),
-                        value: Object::String(PdfString::Literal("two".to_string())),
-                    },
-                    DictionaryRecord {
-                        key: "Key3".to_string(),
-                        value: Object::Name("three".to_string()),
-                    },
-                ]),
+                expected_result: Some(Dictionary {
+                    records: BTreeMap::from([
+                        ("Key1".to_string(), Object::Numeric(Numeric::Integer(1))),
+                        (
+                            "Key2".to_string(),
+                            Object::String(PdfString::Literal("two".to_string())),
+                        ),
+                        ("Key3".to_string(), Object::Name("three".to_string())),
+                    ]),
+                }),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid dictionary with nested structures",
                 input: b"<< /Array [1 2 3] /Nested << /SubKey true >> >>",
                 expected: true,
-                expected_result: Some(vec![
-                    DictionaryRecord {
-                        key: "Array".to_string(),
-                        value: Object::Array(vec![
-                            Object::Numeric(Numeric::Integer(1)),
-                            Object::Numeric(Numeric::Integer(2)),
-                            Object::Numeric(Numeric::Integer(3)),
-                        ]),
-                    },
-                    DictionaryRecord {
-                        key: "Nested".to_string(),
-                        value: Object::Dictionary(vec![DictionaryRecord {
-                            key: "SubKey".to_string(),
-                            value: Object::Boolean(true),
-                        }]),
-                    },
-                ]),
+                expected_result: Some(Dictionary {
+                    records: BTreeMap::from([
+                        (
+                            "Array".to_string(),
+                            Object::Array(vec![
+                                Object::Numeric(Numeric::Integer(1)),
+                                Object::Numeric(Numeric::Integer(2)),
+                                Object::Numeric(Numeric::Integer(3)),
+                            ]),
+                        ),
+                        (
+                            "Nested".to_string(),
+                            Object::Dictionary(Dictionary {
+                                records: BTreeMap::from([(
+                                    "SubKey".to_string(),
+                                    Object::Boolean(true),
+                                )]),
+                            }),
+                        ),
+                    ]),
+                }),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "dictionary with remainder",
                 input: b"<< /Key 42 >>rest",
                 expected: true,
-                expected_result: Some(vec![DictionaryRecord {
-                    key: "Key".to_string(),
-                    value: Object::Numeric(Numeric::Integer(42)),
-                }]),
+                expected_result: Some(Dictionary {
+                    records: BTreeMap::from([(
+                        "Key".to_string(),
+                        Object::Numeric(Numeric::Integer(42)),
+                    )]),
+                }),
                 expected_remainder: Some(b"rest"),
             },
             // Invalid dictionaries
@@ -198,7 +194,7 @@ mod tests {
         ];
 
         for case in &test_cases {
-            let result = dbg_dmp(dictionary, "pdf_dictionary").parse(case.input);
+            let result = dictionary(case.input);
             assert_eq!(
                 result.is_ok(),
                 case.expected,
@@ -208,15 +204,14 @@ mod tests {
             );
 
             if case.expected {
-                let (actual_remainder, result_iter) = result.unwrap();
-                let result_vec: Vec<DictionaryRecord> = result_iter.collect();
+                let (actual_remainder, actual_dict) = result.unwrap();
                 assert_eq!(
-                    result_vec,
+                    actual_dict,
                     *case.expected_result.as_ref().unwrap(),
                     "Test '{}' failed: expected result: {:?}, got: {:?}",
                     case.name,
                     case.expected_result,
-                    result_vec
+                    actual_dict
                 );
                 assert_eq!(
                     actual_remainder,

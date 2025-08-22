@@ -1,8 +1,11 @@
 use nom::{IResult, Parser, branch::alt, bytes::complete::tag, multi::many0, sequence::delimited};
 
-use crate::parser::{
-    Object, object,
-    whitespace::{comment, eol, whitespace},
+use crate::{
+    parser::{
+        object::object,
+        whitespace::{comment, eol, whitespace},
+    },
+    types::Object,
 };
 
 /// Parses a PDF array from the input.
@@ -33,7 +36,7 @@ pub fn array(input: &[u8]) -> IResult<&[u8], Vec<Object>> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::parser::{Numeric, Object};
+    use crate::types::{Numeric, Object, PdfString};
     use nom::error::dbg_dmp;
 
     #[test]
@@ -73,7 +76,7 @@ mod test {
                 expected: true,
                 expected_result: Some(vec![
                     Object::Numeric(Numeric::Integer(1)),
-                    Object::String(crate::parser::PdfString::Literal("two".to_string())),
+                    Object::String(PdfString::Literal("two".to_string())),
                     Object::Name(String::from("three")),
                 ]),
                 expected_remainder: Some(b""),
@@ -84,7 +87,7 @@ mod test {
                 expected: true,
                 expected_result: Some(vec![
                     Object::Numeric(Numeric::Integer(1)),
-                    Object::String(crate::parser::PdfString::Literal("two".to_string())),
+                    Object::String(PdfString::Literal("two".to_string())),
                     Object::Name(String::from("three")),
                 ]),
                 expected_remainder: Some(b""),
@@ -99,7 +102,7 @@ mod test {
                         Object::Numeric(Numeric::Integer(2)),
                         Object::Numeric(Numeric::Integer(3)),
                     ]),
-                    Object::String(crate::parser::PdfString::Literal("four".to_string())),
+                    Object::String(PdfString::Literal("four".to_string())),
                 ]),
                 expected_remainder: Some(b""),
             },
