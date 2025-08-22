@@ -6,14 +6,7 @@ use nom::{
     sequence::preceded,
 };
 
-/// Represents numeric values in PDF 2.0, which can be integers or real numbers.
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Numeric {
-    /// An integer value.
-    Integer(i64),
-    /// A real (floating-point) value.
-    Real(f64),
-}
+use crate::types::Numeric;
 
 /// Parses a numeric value from a byte slice as defined in the PDF 2.0 standard.
 ///

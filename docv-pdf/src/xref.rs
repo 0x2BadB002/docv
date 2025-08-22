@@ -1,12 +1,16 @@
 use std::{collections::BTreeMap, vec::IntoIter};
 
-use nom::Finish;
+use nom::{Finish, Parser};
+use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
-    Error, Result,
     parser::{DictionaryRecord, IndirectReference, XrefTableSection, startxref, trailer, xref},
     process_stream::process_stream,
 };
+
+#[derive(Debug, Snafu)]
+pub struct Error<'a>(error::Error<'a>);
+type Result<'a, T> = std::result::Result<T, Error<'a>>;
 
 #[derive(Debug, Default, Clone)]
 pub struct XrefTable {
@@ -36,7 +40,7 @@ pub struct PdfFileHash {
 }
 
 impl XrefTable {
-    pub fn read(&mut self, input: &[u8], filesize: u64) -> Result<XrefMetadata> {
+    pub fn read<'a>(&mut self, input: &'a [u8], filesize: u64) -> Result<'a, XrefMetadata> {
         let offset = self.read_startxref(input, filesize)?;
         self.read_table(input, filesize, offset)
     }
@@ -50,18 +54,14 @@ impl XrefTable {
     }
 
     pub fn find_offset(&self, ref_id: &IndirectReference) -> Option<u64> {
-        self.entries.get(ref_id).map(|entry| entry.offset)
+        self.entries
+            .get(ref_id)
+            .filter(|entry| entry.occupied)
+            .map(|entry| entry.offset)
     }
 
-    fn read_startxref(&mut self, input: &[u8], filesize: u64) -> Result<u64> {
+    fn read_startxref<'a>(&mut self, input: &'a [u8], filesize: u64) -> Result<'a, u64> {
         let offset = ((filesize as f64).log10().floor() + 1.0) as usize + 23;
-
-        startxref(&input[offset..])
-            .finish()
-            .map(|(_, res)| res)
-            .map_err(|err| Error::Parser {
-                message: err.code.description().to_string(),
-            })
     }
 
     fn read_table(&mut self, input: &[u8], _filesize: u64, offset: u64) -> Result<XrefMetadata> {
@@ -69,12 +69,10 @@ impl XrefTable {
 
         // let table_offset = filesize - offset - startxref_size as u64; // Approximate table size
 
-        let (remained, data) =
-            xref(&input[offset as usize..])
-                .finish()
-                .map_err(|err| Error::Parser {
-                    message: err.code.description().to_string(),
-                })?;
+        let start = offset as usize;
+        let (remained, data) = xref(&input[start..])
+            .finish()
+            .context(error::ParseFileSnafu { offset: start })?;
 
         match data {
             crate::parser::Xref::Table(sections) => {
@@ -119,8 +117,9 @@ impl XrefTable {
         let dictionary_data = trailer(input)
             .finish()
             .map(|(_, data)| data)
-            .map_err(|err| Error::Parser {
-                message: err.code.description().to_string(),
+            .map_err(|err| ParserSnafu {
+                offset: 0,
+                message: err.to_string(),
             })?;
         let mut dict = TrailerDict::default();
 
@@ -131,7 +130,7 @@ impl XrefTable {
                 "ID" => {
                     let array = value.as_array()?;
                     if array.len() < 2 {
-                        return Err(Error::InvalidXrefIDSize(array.len()));
+                        return Err(Error::InvalidXrefIdSize { size: array.len() });
                     }
                     dict.file_hash = Some(PdfFileHash {
                         initial: array[0].as_bytes()?.to_vec(),
@@ -141,12 +140,11 @@ impl XrefTable {
                 "Root" => dict.root_id = Some(value.as_indirect_ref()?.clone()),
                 "Info" => dict.info_id = Some(value.as_indirect_ref()?.clone()),
                 // TODO: Support encrypt
-                _ => return Err(Error::UnknownDictionaryField(key.to_string())),
+                _ => return Err(Error::UnknownDictionaryField { field: key }),
             }
         }
 
-        let new_size = dict.size.ok_or(Error::NoXrefSizeProvided)?;
-
+        let new_size = dict.size.context(NoXrefSnafu)?;
         if new_size > self.size {
             self.size = new_size;
         }
@@ -154,7 +152,7 @@ impl XrefTable {
 
         Ok(XrefMetadata {
             file_hash: dict.file_hash,
-            root_id: dict.root_id.ok_or(Error::NoRootObjectProvided)?,
+            root_id: dict.root_id.context(NoRootObjectSnafu)?,
             info_id: dict.info_id,
         })
     }
@@ -183,7 +181,7 @@ impl XrefTable {
                         .map(|el| el.as_integer().map(|n| n as usize))
                         .collect::<Result<Vec<_>>>()?;
                     if w.len() != 3 {
-                        return Err(Error::InvalidXrefStreamWSize(w.len()));
+                        return Err(Error::InvalidXrefStreamWSize { size: w.len() });
                     }
                     dict.w = Some(w);
                 }
@@ -207,7 +205,7 @@ impl XrefTable {
                 "ID" => {
                     let array = value.as_array()?;
                     if array.len() < 2 {
-                        return Err(Error::InvalidXrefIDSize(array.len()));
+                        return Err(Error::InvalidXrefIdSize { size: array.len() });
                     }
                     dict.file_hash = Some(PdfFileHash {
                         initial: array[0].as_bytes()?.to_vec(),
@@ -215,12 +213,12 @@ impl XrefTable {
                     });
                 }
                 // TODO: Support encrypt
-                _ => return Err(Error::UnknownDictionaryField(key.to_string())),
+                _ => return Err(Error::UnknownDictionaryField { field: key }),
             }
         }
 
-        let w = dict.w.ok_or(Error::InvalidXrefStreamWSize(0))?;
-        let size = dict.size.ok_or(Error::NoXrefSizeProvided)?;
+        let w = dict.w.context(NoXrefStreamWSnafu)?;
+        let size = dict.size.context(NoXrefSizeSnafu)?;
         let index = dict.index.unwrap_or_else(|| vec![(0, size)]);
         let entry_size = w.iter().sum();
 
@@ -260,7 +258,9 @@ impl XrefTable {
                         Ok(())
                     }
                     2 => Ok(()),
-                    _ => Err(Error::UnexpectedXrefStreamEntryType(entry_data[0])),
+                    _ => Err(Error::InvalidXrefStreamEntryType {
+                        entry_type: entry_data[0],
+                    }),
                 }
             })?;
 
@@ -271,8 +271,22 @@ impl XrefTable {
 
         Ok(XrefMetadata {
             file_hash: dict.file_hash,
-            root_id: dict.root_id.ok_or(Error::NoRootObjectProvided)?,
+            root_id: dict.root_id.context(NoRootObjectSnafu)?,
             info_id: dict.info_id,
         })
+    }
+}
+
+mod error {
+    use snafu::Snafu;
+
+    #[derive(Debug, Snafu)]
+    #[snafu(visibility(pub(super)))]
+    pub(super) enum Error<'a> {
+        #[snafu(display("Parser error at offset {}", offset))]
+        ParseFile {
+            offset: usize,
+            source: nom::error::Error<&'a [u8]>,
+        },
     }
 }

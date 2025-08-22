@@ -7,27 +7,9 @@ use nom::{
     sequence::{delimited, preceded},
 };
 
-use crate::parser::whitespace::is_whitespace;
+use crate::{parser::whitespace::is_whitespace, types::PdfString};
 
 // NOTE: In most cases here `str::from_utf8` can be safely replaced with unsafe variant
-
-/// Represents string values in PDF 2.0, which can be literal or hexadecimal strings.
-#[derive(Debug, PartialEq, Clone)]
-pub enum PdfString {
-    /// Sequence of literal characters enclosed in parentheses `(` `)`
-    Literal(std::string::String),
-    /// Hexadecimal data enclosed in angle brackets `<` `>`
-    Hexadecimal(Vec<u8>),
-}
-
-impl PdfString {
-    pub fn as_bytes(&self) -> &[u8] {
-        match self {
-            PdfString::Literal(data) => data.as_bytes(),
-            PdfString::Hexadecimal(data) => data.as_slice(),
-        }
-    }
-}
 
 /// Parses a PDF string, which can be a literal or hexadecimal string.
 ///

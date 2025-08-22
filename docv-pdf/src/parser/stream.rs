@@ -6,9 +6,12 @@ use nom::{
     sequence::{delimited, terminated},
 };
 
-use crate::parser::{
-    DictionaryRecord, dictionary,
-    whitespace::{comment, eol, whitespace},
+use crate::{
+    parser::{
+        dictionary::dictionary,
+        whitespace::{comment, eol, whitespace},
+    },
+    types::Stream,
 };
 
 /// Parses a PDF stream object from the input.
@@ -41,7 +44,7 @@ use crate::parser::{
 /// - Tuple with two elements on success:
 ///   1. Iterator over stream dictionary records
 ///   2. Raw stream content bytes (data between `stream` and `endstream`)
-pub fn stream(input: &[u8]) -> IResult<&[u8], (impl Iterator<Item = DictionaryRecord>, &[u8])> {
+pub fn stream(input: &[u8]) -> IResult<&[u8], Stream> {
     let raw_data = take_until("endstream");
 
     let content = delimited(
@@ -54,15 +57,18 @@ pub fn stream(input: &[u8]) -> IResult<&[u8], (impl Iterator<Item = DictionaryRe
         terminated(dictionary, many0(alt((whitespace, comment, eol)))),
         content,
     )
+        .map(|(dictionary, data)| Stream {
+            dictionary,
+            data: data.to_vec(),
+        })
         .parse(input)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::dictionary::DictionaryRecord;
-    use crate::parser::{Numeric, Object};
-    use nom::error::dbg_dmp;
+    use crate::types::{Dictionary, Numeric, Object};
+    use std::collections::BTreeMap;
 
     #[test]
     fn test_stream_parser() {
@@ -71,8 +77,8 @@ mod tests {
             name: &'static str,
             input: &'static [u8],
             expected: bool,
-            expected_dict: Option<Vec<DictionaryRecord>>,
-            expected_content: Option<&'static [u8]>,
+            expected_dict: Option<Dictionary>,
+            expected_content: Option<Vec<u8>>,
             expected_remainder: Option<&'static [u8]>,
         }
 
@@ -82,52 +88,62 @@ mod tests {
                 name: "valid minimal stream",
                 input: b"<<>>stream\nendstream",
                 expected: true,
-                expected_dict: Some(vec![]),
-                expected_content: Some(b""),
+                expected_dict: Some(Dictionary {
+                    records: BTreeMap::new(),
+                }),
+                expected_content: Some(vec![]),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid stream with content",
                 input: b"<< /Length 5 >>stream\nhelloendstream",
                 expected: true,
-                expected_dict: Some(vec![DictionaryRecord {
-                    key: "Length".to_string(),
-                    value: Object::Numeric(Numeric::Integer(5)),
-                }]),
-                expected_content: Some(b"hello"),
+                expected_dict: Some(Dictionary {
+                    records: BTreeMap::from([(
+                        "Length".to_string(),
+                        Object::Numeric(Numeric::Integer(5)),
+                    )]),
+                }),
+                expected_content: Some(b"hello".to_vec()),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid stream with CRLF",
                 input: b"<< /Length 5 >>stream\r\nhelloendstream",
                 expected: true,
-                expected_dict: Some(vec![DictionaryRecord {
-                    key: "Length".to_string(),
-                    value: Object::Numeric(Numeric::Integer(5)),
-                }]),
-                expected_content: Some(b"hello"),
+                expected_dict: Some(Dictionary {
+                    records: BTreeMap::from([(
+                        "Length".to_string(),
+                        Object::Numeric(Numeric::Integer(5)),
+                    )]),
+                }),
+                expected_content: Some(b"hello".to_vec()),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid stream with comments and whitespace",
                 input: b"<< /Length 5 >> % comment\n\t stream\nhelloendstream",
                 expected: true,
-                expected_dict: Some(vec![DictionaryRecord {
-                    key: "Length".to_string(),
-                    value: Object::Numeric(Numeric::Integer(5)),
-                }]),
-                expected_content: Some(b"hello"),
+                expected_dict: Some(Dictionary {
+                    records: BTreeMap::from([(
+                        "Length".to_string(),
+                        Object::Numeric(Numeric::Integer(5)),
+                    )]),
+                }),
+                expected_content: Some(b"hello".to_vec()),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid stream with remainder",
                 input: b"<< /Length 5 >>stream\nhelloendstreamrest",
                 expected: true,
-                expected_dict: Some(vec![DictionaryRecord {
-                    key: "Length".to_string(),
-                    value: Object::Numeric(Numeric::Integer(5)),
-                }]),
-                expected_content: Some(b"hello"),
+                expected_dict: Some(Dictionary {
+                    records: BTreeMap::from([(
+                        "Length".to_string(),
+                        Object::Numeric(Numeric::Integer(5)),
+                    )]),
+                }),
+                expected_content: Some(b"hello".to_vec()),
                 expected_remainder: Some(b"rest"),
             },
             // Invalid streams
@@ -166,7 +182,7 @@ mod tests {
         ];
 
         for case in &test_cases {
-            let result = dbg_dmp(stream, "pdf_stream").parse(case.input);
+            let result = stream(case.input);
             assert_eq!(
                 result.is_ok(),
                 case.expected,
@@ -176,23 +192,22 @@ mod tests {
             );
 
             if case.expected {
-                let (actual_remainder, (dict_iter, content)) = result.unwrap();
-                let dict_vec: Vec<DictionaryRecord> = dict_iter.collect();
+                let (actual_remainder, actual_stream) = result.unwrap();
                 assert_eq!(
-                    dict_vec,
+                    actual_stream.dictionary,
                     *case.expected_dict.as_ref().unwrap(),
                     "Test '{}' failed: expected dictionary: {:?}, got: {:?}",
                     case.name,
                     case.expected_dict,
-                    dict_vec
+                    actual_stream.dictionary
                 );
                 assert_eq!(
-                    content,
+                    actual_stream.data,
                     *case.expected_content.as_ref().unwrap(),
                     "Test '{}' failed: expected content: {:?}, got: {:?}",
                     case.name,
                     case.expected_content,
-                    content
+                    actual_stream.data
                 );
                 assert_eq!(
                     actual_remainder,
