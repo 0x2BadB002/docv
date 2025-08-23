@@ -45,7 +45,18 @@ use crate::{
 ///   1. Iterator over stream dictionary records
 ///   2. Raw stream content bytes (data between `stream` and `endstream`)
 pub fn stream(input: &[u8]) -> IResult<&[u8], Stream> {
-    let raw_data = take_until("endstream");
+    let raw_data = take_until("endstream").map(|res: &[u8]| -> &[u8] {
+        if res.len() >= 2 && res.ends_with(b"\r\n") {
+            return &res[..(res.len() - 2)];
+        }
+        if !res.is_empty() && res.ends_with(b"\n") {
+            return &res[..(res.len() - 1)];
+        }
+        if !res.is_empty() && res.ends_with(b"\r") {
+            return &res[..(res.len() - 1)];
+        }
+        res
+    });
 
     let content = delimited(
         (tag("stream"), alt((tag("\r\n"), tag("\n")))),
@@ -96,7 +107,7 @@ mod tests {
             },
             TestCase {
                 name: "valid stream with content",
-                input: b"<< /Length 5 >>stream\nhelloendstream",
+                input: b"<< /Length 5 >>stream\nhello\nendstream",
                 expected: true,
                 expected_dict: Some(Dictionary {
                     records: BTreeMap::from([(
@@ -109,7 +120,7 @@ mod tests {
             },
             TestCase {
                 name: "valid stream with CRLF",
-                input: b"<< /Length 5 >>stream\r\nhelloendstream",
+                input: b"<< /Length 5 >>stream\r\nhello\r\nendstream",
                 expected: true,
                 expected_dict: Some(Dictionary {
                     records: BTreeMap::from([(
@@ -122,7 +133,7 @@ mod tests {
             },
             TestCase {
                 name: "valid stream with comments and whitespace",
-                input: b"<< /Length 5 >> % comment\n\t stream\nhelloendstream",
+                input: b"<< /Length 5 >> % comment\n\t stream\nhello\r\nendstream",
                 expected: true,
                 expected_dict: Some(Dictionary {
                     records: BTreeMap::from([(
@@ -135,7 +146,7 @@ mod tests {
             },
             TestCase {
                 name: "valid stream with remainder",
-                input: b"<< /Length 5 >>stream\nhelloendstreamrest",
+                input: b"<< /Length 5 >>stream\nhello\nendstreamrest",
                 expected: true,
                 expected_dict: Some(Dictionary {
                     records: BTreeMap::from([(
@@ -149,7 +160,7 @@ mod tests {
             // Invalid streams
             TestCase {
                 name: "invalid missing stream keyword",
-                input: b"<< /Length 5 >>helloendstream",
+                input: b"<< /Length 5 >>hello\nendstream",
                 expected: false,
                 expected_dict: None,
                 expected_content: None,
@@ -157,7 +168,7 @@ mod tests {
             },
             TestCase {
                 name: "invalid missing endstream",
-                input: b"<< /Length 5 >>stream\nhello",
+                input: b"<< /Length 5 >>stream\nhello\n",
                 expected: false,
                 expected_dict: None,
                 expected_content: None,
@@ -165,7 +176,7 @@ mod tests {
             },
             TestCase {
                 name: "invalid unclosed dictionary",
-                input: b"<< /Length 5 stream\nhelloendstream",
+                input: b"<< /Length 5 stream\nhello\nendstream",
                 expected: false,
                 expected_dict: None,
                 expected_content: None,
