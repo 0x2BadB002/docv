@@ -50,3 +50,11 @@ impl Dictionary {
         self.records.get(key)
     }
 }
+
+impl<const N: usize> From<[(String, Object); N]> for Dictionary {
+    fn from(value: [(String, Object); N]) -> Self {
+        Self {
+            records: BTreeMap::from(value),
+        }
+    }
+}
