@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::types::object::Object;
 
@@ -17,7 +17,7 @@ use crate::types::object::Object;
 pub struct IndirectObject {
     pub id: usize,
     pub gen_id: usize,
-    pub object: Rc<Object>,
+    pub object: Arc<Object>,
 }
 
 /// Represents a parsed PDF indirect object reference.

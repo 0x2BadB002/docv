@@ -40,7 +40,7 @@ pub enum Xref {
 pub struct XrefTableSection {
     pub first_id: usize,
     #[allow(dead_code)]
-    pub length: usize,
+    pub length: usize, // NOTE: In xref.rs it could be used to check length
     pub entries: IntoIter<XrefTableEntry>,
 }
 
@@ -133,7 +133,10 @@ pub fn xref(input: &[u8]) -> IResult<&[u8], Xref> {
 /// - Remaining input after parsing
 /// - Dictionary containing trailer information
 pub fn trailer(input: &[u8]) -> IResult<&[u8], Dictionary> {
-    let trailer = terminated(tag("trailer"), many0(alt((whitespace, eol, comment))));
+    let trailer = terminated(
+        preceded(many0(alt((whitespace, eol, comment))), tag("trailer")),
+        many0(alt((whitespace, eol, comment))),
+    );
 
     preceded(trailer, dictionary).parse(input)
 }
@@ -440,6 +443,18 @@ mod tests {
             TestCase {
                 name: "valid trailer with whitespace",
                 input: b"trailer \n\t << /Size 10 >>",
+                expected: true,
+                expected_dict: Some(Dictionary {
+                    records: BTreeMap::from([(
+                        "Size".to_string(),
+                        Object::Numeric(Numeric::Integer(10)),
+                    )]),
+                }),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid trailer with whitespace in begining",
+                input: b"\n\t trailer \n\t << /Size 10 >>",
                 expected: true,
                 expected_dict: Some(Dictionary {
                     records: BTreeMap::from([(
