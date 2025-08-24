@@ -40,19 +40,19 @@ impl XrefTable {
         self.read_table(input, filesize, offset)
     }
 
-    pub fn read_prev_table(&mut self, input: &[u8], filesize: u64) -> Result<()> {
-        if self.prev.is_some() {
-            self.read_table(input, filesize, self.prev.unwrap())?;
-        }
-
-        Ok(())
-    }
-
     pub fn find_offset(&self, ref_id: &IndirectReference) -> Option<u64> {
         self.entries
             .get(ref_id)
             .filter(|entry| entry.occupied)
             .map(|entry| entry.offset)
+    }
+
+    fn read_prev_table(&mut self, input: &[u8], filesize: u64) -> Result<()> {
+        if self.prev.is_some() {
+            self.read_table(input, filesize, self.prev.unwrap())?;
+        }
+
+        Ok(())
     }
 
     fn read_startxref(&mut self, input: &[u8], filesize: u64) -> Result<u64> {
@@ -91,6 +91,18 @@ impl XrefTable {
                 self.parse_trailer(remained)
             }
             Xref::ObjectStream(mut stream) => {
+                stream
+                    .process_filters()
+                    .context(error::InvalidStreamSnafu)?;
+
+                self.parse_xref_stream(stream)
+            }
+            Xref::IndirectObjectStream(indirect_object) => {
+                let mut stream = indirect_object
+                    .as_stream()
+                    .with_context(|_| error::InvalidObjectStreamSnafu)?
+                    .clone();
+
                 stream
                     .process_filters()
                     .context(error::InvalidStreamSnafu)?;
@@ -326,6 +338,9 @@ mod error {
             field: String,
             source: crate::types::ObjectError,
         },
+
+        #[snafu(display("Invalid object stream provided"))]
+        InvalidObjectStream { source: crate::types::ObjectError },
 
         #[snafu(display("Invalid Xref `ID` array size. Expected = 2, Got = {size}"))]
         InvalidXrefIDSize { size: usize },

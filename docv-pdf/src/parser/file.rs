@@ -13,10 +13,11 @@ use nom::{
 use crate::{
     parser::{
         dictionary::dictionary,
+        indirect_object::indirect_object,
         stream::stream,
         whitespace::{comment, eol, whitespace},
     },
-    types::{Dictionary, Stream},
+    types::{Dictionary, IndirectObject, Stream},
 };
 
 /// Represents a cross-reference table or object stream in a PDF document.
@@ -30,6 +31,8 @@ pub enum Xref {
     Table(IntoIter<XrefTableSection>),
     /// Compressed cross-reference stream object
     ObjectStream(Stream),
+    /// Indirect object definition with compressed cross-reference stream object
+    IndirectObjectStream(IndirectObject),
 }
 
 /// Represents a section of a cross-reference table.
@@ -107,7 +110,12 @@ pub fn startxref(input: &[u8]) -> IResult<&[u8], u64> {
 /// - Remaining input after parsing
 /// - `Xref` enum variant representing either a table or object stream
 pub fn xref(input: &[u8]) -> IResult<&[u8], Xref> {
-    alt((xref_table.map(Xref::Table), stream.map(Xref::ObjectStream))).parse(input)
+    alt((
+        xref_table.map(Xref::Table),
+        stream.map(Xref::ObjectStream),
+        indirect_object.map(Xref::IndirectObjectStream),
+    ))
+    .parse(input)
 }
 
 /// Parses the trailer dictionary containing document-wide information.
@@ -133,8 +141,9 @@ pub fn xref(input: &[u8]) -> IResult<&[u8], Xref> {
 /// - Remaining input after parsing
 /// - Dictionary containing trailer information
 pub fn trailer(input: &[u8]) -> IResult<&[u8], Dictionary> {
-    let trailer = terminated(
-        preceded(many0(alt((whitespace, eol, comment))), tag("trailer")),
+    let trailer = delimited(
+        many0(alt((whitespace, eol, comment))),
+        tag("trailer"),
         many0(alt((whitespace, eol, comment))),
     );
 

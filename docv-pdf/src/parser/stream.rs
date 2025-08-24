@@ -109,12 +109,10 @@ mod tests {
                 name: "valid stream with content",
                 input: b"<< /Length 5 >>stream\nhello\nendstream",
                 expected: true,
-                expected_dict: Some(Dictionary {
-                    records: BTreeMap::from([(
-                        "Length".to_string(),
-                        Object::Numeric(Numeric::Integer(5)),
-                    )]),
-                }),
+                expected_dict: Some(Dictionary::from([(
+                    "Length".to_string(),
+                    Object::Numeric(Numeric::Integer(5)),
+                )])),
                 expected_content: Some(b"hello".to_vec()),
                 expected_remainder: Some(b""),
             },
@@ -122,12 +120,10 @@ mod tests {
                 name: "valid stream with CRLF",
                 input: b"<< /Length 5 >>stream\r\nhello\r\nendstream",
                 expected: true,
-                expected_dict: Some(Dictionary {
-                    records: BTreeMap::from([(
-                        "Length".to_string(),
-                        Object::Numeric(Numeric::Integer(5)),
-                    )]),
-                }),
+                expected_dict: Some(Dictionary::from([(
+                    "Length".to_string(),
+                    Object::Numeric(Numeric::Integer(5)),
+                )])),
                 expected_content: Some(b"hello".to_vec()),
                 expected_remainder: Some(b""),
             },
@@ -135,12 +131,10 @@ mod tests {
                 name: "valid stream with comments and whitespace",
                 input: b"<< /Length 5 >> % comment\n\t stream\nhello\r\nendstream",
                 expected: true,
-                expected_dict: Some(Dictionary {
-                    records: BTreeMap::from([(
-                        "Length".to_string(),
-                        Object::Numeric(Numeric::Integer(5)),
-                    )]),
-                }),
+                expected_dict: Some(Dictionary::from([(
+                    "Length".to_string(),
+                    Object::Numeric(Numeric::Integer(5)),
+                )])),
                 expected_content: Some(b"hello".to_vec()),
                 expected_remainder: Some(b""),
             },
@@ -148,13 +142,22 @@ mod tests {
                 name: "valid stream with remainder",
                 input: b"<< /Length 5 >>stream\nhello\nendstreamrest",
                 expected: true,
-                expected_dict: Some(Dictionary {
-                    records: BTreeMap::from([(
-                        "Length".to_string(),
-                        Object::Numeric(Numeric::Integer(5)),
-                    )]),
-                }),
+                expected_dict: Some(Dictionary::from([(
+                    "Length".to_string(),
+                    Object::Numeric(Numeric::Integer(5)),
+                )])),
                 expected_content: Some(b"hello".to_vec()),
+                expected_remainder: Some(b"rest"),
+            },
+            TestCase {
+                name: "valid stream with non-unicode bytes",
+                input: b"<< /Length 5 >>stream\n\x1A\x3F\nendstreamrest",
+                expected: true,
+                expected_dict: Some(Dictionary::from([(
+                    "Length".to_string(),
+                    Object::Numeric(Numeric::Integer(5)),
+                )])),
+                expected_content: Some(vec![0x1a, 0x3f]),
                 expected_remainder: Some(b"rest"),
             },
             // Invalid streams
