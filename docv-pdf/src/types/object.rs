@@ -187,7 +187,18 @@ impl Object {
         match self {
             Object::IndirectReference(id) => Ok(id),
             _ => Err(error::Error::UnexpectedObjectType {
-                expected: "Array".to_string(),
+                expected: "Indirect reference".to_string(),
+                got: self.clone(),
+            }
+            .into()),
+        }
+    }
+
+    pub fn as_stream(&self) -> Result<&Stream> {
+        match self {
+            Object::Stream(stream) => Ok(stream),
+            _ => Err(error::Error::UnexpectedObjectType {
+                expected: "Stream".to_string(),
                 got: self.clone(),
             }
             .into()),
