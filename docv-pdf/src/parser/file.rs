@@ -39,6 +39,7 @@ pub enum Xref {
 #[derive(Debug, Clone)]
 pub struct XrefTableSection {
     pub first_id: usize,
+    #[allow(dead_code)]
     pub length: usize,
     pub entries: IntoIter<XrefTableEntry>,
 }

@@ -3,6 +3,8 @@ use std::{fs::File, path::PathBuf};
 use memmap2::Mmap;
 use snafu::{ResultExt, Snafu};
 
+use crate::xref::XrefTable;
+
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
@@ -11,6 +13,8 @@ type Result<T> = std::result::Result<T, Error>;
 pub struct Document {
     size: u64,
     path: PathBuf,
+
+    xref: XrefTable,
 }
 
 impl Document {
@@ -33,7 +37,7 @@ impl Document {
 
         self.size = metadata.len();
 
-        let _file = unsafe { Mmap::map(&file) }.with_context(|_| error::MmapSnafu {
+        let file = unsafe { Mmap::map(&file) }.with_context(|_| error::MmapSnafu {
             path: self.path.clone(),
         })?;
 
@@ -41,6 +45,13 @@ impl Document {
         // {
         //     file.advise(Advice::Sequential)?; // Sequential access expected
         // }
+
+        let _metadata =
+            self.xref
+                .read(&file, self.size)
+                .with_context(|_| error::ReadXrefSnafu {
+                    path: self.path.clone(),
+                })?;
 
         Ok(())
     }
@@ -70,6 +81,12 @@ mod error {
         Mmap {
             path: PathBuf,
             source: std::io::Error,
+        },
+
+        #[snafu(display("Failed to read xref table for file: {}", path.display()))]
+        ReadXref {
+            path: PathBuf,
+            source: crate::xref::Error,
         },
     }
 }
