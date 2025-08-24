@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use nom::{
     IResult, Parser,
@@ -49,7 +49,7 @@ pub fn indirect_object(input: &[u8]) -> IResult<&[u8], IndirectObject> {
         .map(|(id, gen_id, object)| IndirectObject {
             id,
             gen_id,
-            object: Rc::new(object),
+            object: Arc::new(object),
         })
         .parse(input)
 }
@@ -192,7 +192,7 @@ mod tests {
             );
 
             if let Ok((actual_remainder, actual)) = result {
-                let expected_object = Rc::new(case.expected_object.as_ref().unwrap());
+                let expected_object = Arc::new(case.expected_object.as_ref().unwrap());
                 assert_eq!(
                     actual.id,
                     case.expected_id.unwrap(),
