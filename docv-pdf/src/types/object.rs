@@ -161,43 +161,38 @@ impl Object {
         }
     }
 
-    // pub fn as_str(&self) -> Result<&str> {
-    //     match self {
-    //         Object::String(PdfString::Literal(data)) => Ok(data.as_str()),
-    //         Object::String(PdfString::Hexadecimal(data)) => Ok(str::from_utf8(data)?),
-    //         _ => Err(Error::InvalidObjectType {
-    //             expected: "String".to_string(),
-    //             got: self.clone(),
-    //         }),
-    //     }
-    // }
-    // pub fn as_bytes(&self) -> Result<&[u8]> {
-    //     match self {
-    //         Object::String(data) => Ok(data.as_bytes()),
-    //         _ => Err(Error::InvalidObjectType {
-    //             expected: "String".to_string(),
-    //             got: self.clone(),
-    //         }),
-    //     }
-    // }
-    // pub fn as_array(&self) -> Result<&[Object]> {
-    //     match self {
-    //         Object::Array(data) => Ok(data),
-    //         _ => Err(Error::InvalidObjectType {
-    //             expected: "Array".to_string(),
-    //             got: self.clone(),
-    //         }),
-    //     }
-    // }
-    // pub fn as_indirect_ref(&self) -> Result<&IndirectReference> {
-    //     match self {
-    //         Object::IndirectReference(id) => Ok(id),
-    //         _ => Err(Error::InvalidObjectType {
-    //             expected: "Array".to_string(),
-    //             got: self.clone(),
-    //         }),
-    //     }
-    // }
+    pub fn as_array(&self) -> Result<&[Object]> {
+        match self {
+            Object::Array(data) => Ok(data),
+            _ => Err(error::Error::UnexpectedObjectType {
+                expected: "Array".to_string(),
+                got: self.clone(),
+            }
+            .into()),
+        }
+    }
+
+    pub fn as_bytes(&self) -> Result<&[u8]> {
+        match self {
+            Object::String(data) => Ok(data.as_bytes()),
+            _ => Err(error::Error::UnexpectedObjectType {
+                expected: "String".to_string(),
+                got: self.clone(),
+            }
+            .into()),
+        }
+    }
+
+    pub fn as_indirect_ref(&self) -> Result<&IndirectReference> {
+        match self {
+            Object::IndirectReference(id) => Ok(id),
+            _ => Err(error::Error::UnexpectedObjectType {
+                expected: "Array".to_string(),
+                got: self.clone(),
+            }
+            .into()),
+        }
+    }
 }
 
 mod error {

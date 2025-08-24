@@ -11,3 +11,6 @@ pub use numeric::Numeric;
 pub use object::Object;
 pub use stream::Stream;
 pub use string::PdfString;
+
+pub use object::Error as ObjectError;
+pub use stream::Error as StreamError;

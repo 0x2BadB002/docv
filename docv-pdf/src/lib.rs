@@ -1,6 +1,6 @@
 mod document;
 mod parser;
 mod types;
-// mod xref;
+mod xref;
 
 pub use document::{Document, Error};

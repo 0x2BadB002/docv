@@ -10,3 +10,5 @@ mod object;
 mod stream;
 mod string;
 mod whitespace;
+
+pub use file::{Xref, XrefTableSection, startxref, trailer, xref};
