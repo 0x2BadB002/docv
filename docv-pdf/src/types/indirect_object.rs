@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use crate::types::object::Object;
 
@@ -17,7 +17,7 @@ use crate::types::object::Object;
 pub struct IndirectObject {
     pub id: usize,
     pub gen_id: usize,
-    pub object: Arc<Object>,
+    object: Arc<Object>,
 }
 
 /// Represents a parsed PDF indirect object reference.
@@ -33,4 +33,27 @@ pub struct IndirectObject {
 pub struct IndirectReference {
     pub id: usize,
     pub gen_id: usize,
+}
+
+impl IndirectObject {
+    pub fn new(id: usize, gen_id: usize, object: Object) -> Self {
+        Self {
+            id,
+            gen_id,
+            object: Arc::new(object),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn get_object(&self) -> &Object {
+        &self.object
+    }
+}
+
+impl Deref for IndirectObject {
+    type Target = Object;
+
+    fn deref(&self) -> &Self::Target {
+        &self.object
+    }
 }

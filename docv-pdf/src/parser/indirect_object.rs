@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
 use nom::{
-    IResult, Parser,
+    IResult, ParseTo, Parser,
     branch::alt,
     bytes::complete::tag,
     character::complete::digit1,
@@ -34,10 +32,10 @@ use crate::{
 /// - Remaining input after parsing
 /// - Parsed [`IndirectObject`] on success
 pub fn indirect_object(input: &[u8]) -> IResult<&[u8], IndirectObject> {
-    let id = terminated(digit1, many0(alt((whitespace, comment, eol))))
-        .map_res(|res| str::from_utf8(res).unwrap().parse());
-    let gen_id = terminated(digit1, many0(alt((whitespace, comment, eol))))
-        .map_res(|res| str::from_utf8(res).unwrap().parse());
+    let id =
+        terminated(digit1, many0(alt((whitespace, comment, eol)))).map_opt(|res| res.parse_to());
+    let gen_id =
+        terminated(digit1, many0(alt((whitespace, comment, eol)))).map_opt(|res| res.parse_to());
 
     let contents = delimited(
         many0(alt((whitespace, comment, eol))),
@@ -46,11 +44,7 @@ pub fn indirect_object(input: &[u8]) -> IResult<&[u8], IndirectObject> {
     );
 
     (id, gen_id, delimited(tag("obj"), contents, tag("endobj")))
-        .map(|(id, gen_id, object)| IndirectObject {
-            id,
-            gen_id,
-            object: Arc::new(object),
-        })
+        .map(|(id, gen_id, object)| IndirectObject::new(id, gen_id, object))
         .parse(input)
 }
 
@@ -192,7 +186,7 @@ mod tests {
             );
 
             if let Ok((actual_remainder, actual)) = result {
-                let expected_object = Arc::new(case.expected_object.as_ref().unwrap());
+                let expected_object = case.expected_object.as_ref().unwrap();
                 assert_eq!(
                     actual.id,
                     case.expected_id.unwrap(),
@@ -210,9 +204,12 @@ mod tests {
                     actual.gen_id
                 );
                 assert_eq!(
-                    *actual.object, **expected_object,
+                    *actual.get_object(),
+                    *expected_object,
                     "Test '{}' failed: expected object: {:?}, got: {:?}",
-                    case.name, case.expected_object, actual.object
+                    case.name,
+                    case.expected_object,
+                    *actual.get_object()
                 );
                 assert_eq!(
                     actual_remainder,
