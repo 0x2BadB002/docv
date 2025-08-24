@@ -1,441 +1,362 @@
-use std::collections::BTreeMap;
-use std::io::Seek;
-use std::vec;
+use std::{collections::BTreeMap, vec::IntoIter};
 
-use pest::iterators::Pair;
+use nom::Finish;
+use snafu::{OptionExt, ResultExt, Snafu};
 
-use crate::parser::{
-    Rule, parse_array, parse_dictionary, parse_hex_string, parse_indirect_reference, parse_numeric,
-    parse_startxref, parse_stream, parse_string, parse_xref, process_bytes,
+use crate::{
+    document::DocumentHash,
+    parser::{Xref, XrefTableSection, startxref, trailer, xref},
+    types::{Dictionary, IndirectReference, Stream},
 };
-use crate::{Error, Result};
+
+#[derive(Debug, Snafu)]
+pub struct Error(error::Error);
+type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Default, Clone)]
 pub struct XrefTable {
-    entries: BTreeMap<XrefReference, XrefEntry>,
+    entries: BTreeMap<IndirectReference, XrefEntry>,
     size: usize,
     prev: Option<u64>,
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone, Default)]
-pub struct XrefReference {
-    id: usize,
-    generation: usize,
-}
-
-#[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
 pub struct XrefEntry {
     offset: u64,
     occupied: bool,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
 pub struct XrefMetadata {
-    pub file_hash: Option<PdfFileHash>,
+    pub hash: Option<DocumentHash>,
 
-    pub root_id: XrefReference,
-    pub info_id: Option<XrefReference>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Default, Clone)]
-pub struct PdfFileHash {
-    initial: Vec<u8>,
-    current: Vec<u8>,
+    pub root_id: IndirectReference,
+    pub info_id: Option<IndirectReference>,
 }
 
 impl XrefTable {
-    pub fn read<T>(&mut self, reader: &mut T, filesize: u64) -> Result<XrefMetadata>
-    where
-        T: Seek,
-        T: std::io::Read,
-    {
-        let offset = self.read_startxref(reader, filesize)?;
-        self.read_table(reader, filesize, offset)
+    pub fn read(&mut self, input: &[u8], filesize: u64) -> Result<XrefMetadata> {
+        let offset = self.read_startxref(input, filesize)?;
+        self.read_table(input, filesize, offset)
     }
 
-    pub fn read_prev_table<T>(&mut self, reader: &mut T, filesize: u64) -> Result<()>
-    where
-        T: Seek,
-        T: std::io::Read,
-    {
+    pub fn find_offset(&self, ref_id: &IndirectReference) -> Option<u64> {
+        self.entries
+            .get(ref_id)
+            .filter(|entry| entry.occupied)
+            .map(|entry| entry.offset)
+    }
+
+    fn read_prev_table(&mut self, input: &[u8], filesize: u64) -> Result<()> {
         if self.prev.is_some() {
-            self.read_table(reader, filesize, self.prev.unwrap())?;
+            self.read_table(input, filesize, self.prev.unwrap())?;
         }
 
         Ok(())
     }
 
-    pub fn find_offset(&self, ref_id: &XrefReference) -> Option<u64> {
-        self.entries.get(ref_id).map(|entry| entry.offset)
-    }
-
-    fn read_startxref<T>(&mut self, reader: &mut T, filesize: u64) -> Result<u64>
-    where
-        T: Seek,
-        T: std::io::Read,
-    {
+    fn read_startxref(&mut self, input: &[u8], filesize: u64) -> Result<u64> {
         let offset = ((filesize as f64).log10().floor() + 1.0) as usize + 23;
 
-        reader.seek(std::io::SeekFrom::End(-(offset as i64)))?;
+        let start = (filesize as usize) - offset;
+        let (_, offset) =
+            startxref(&input[start..])
+                .finish()
+                .ok()
+                .with_context(|| error::ParseFileSnafu {
+                    section: "startxref".to_string(),
+                    offset: start,
+                })?;
 
-        let mut buff = vec![0u8; offset];
-        reader.read_exact(&mut buff)?;
-        let buff = String::from_utf8(buff)?;
+        Ok(offset)
+    }
 
-        let token = parse_startxref(&buff)?;
-        let token = token
-            .into_inner()
-            .next()
-            .ok_or_else(|| Error::InvalidXref(buff.to_string()))?;
+    fn read_table(&mut self, input: &[u8], _filesize: u64, offset: u64) -> Result<XrefMetadata> {
+        // let table_offset = filesize - offset - startxref_size as u64; // Approximate table size
 
-        match token.as_rule() {
-            Rule::last_xref_pos => Ok(token.as_str().parse()?),
-            _ => Err(Error::InvalidXref(token.to_string())),
+        let start = offset as usize;
+        let (remained, data) =
+            xref(&input[start..])
+                .finish()
+                .ok()
+                .with_context(|| error::ParseFileSnafu {
+                    section: "xref".to_string(),
+                    offset: start,
+                })?;
+
+        match data {
+            Xref::Table(sections) => {
+                self.parse_xref_table(sections)?;
+
+                self.parse_trailer(remained)
+            }
+            Xref::ObjectStream(mut stream) => {
+                stream
+                    .process_filters()
+                    .context(error::InvalidStreamSnafu)?;
+
+                self.parse_xref_stream(stream)
+            }
+            Xref::IndirectObjectStream(indirect_object) => {
+                let mut stream = indirect_object
+                    .as_stream()
+                    .with_context(|_| error::InvalidObjectStreamSnafu)?
+                    .clone();
+
+                stream
+                    .process_filters()
+                    .context(error::InvalidStreamSnafu)?;
+
+                self.parse_xref_stream(stream)
+            }
         }
     }
 
-    fn read_table<T>(&mut self, reader: &mut T, filesize: u64, offset: u64) -> Result<XrefMetadata>
-    where
-        T: Seek,
-        T: std::io::Read,
-    {
-        let startxref_size = 9 + ((offset as f64).log10().floor() + 1.0) as usize + 5;
-
-        reader.seek(std::io::SeekFrom::Start(offset))?;
-
-        let table_offset = filesize - offset - startxref_size as u64;
-        let mut buff = vec![0u8; table_offset as usize];
-        reader.read_exact(&mut buff)?;
-        let (buff, chunks) = process_bytes(buff)?;
-
-        let token = parse_xref(&buff)?;
-
-        let mut token = token.into_inner();
-        let table = token
-            .next()
-            .ok_or_else(|| Error::InvalidXref(buff.to_string()))?;
-
-        match table.as_rule() {
-            Rule::xref_old => {
-                self.parse_xref_table(table)?;
-
-                let trailer = token
-                    .next()
-                    .ok_or_else(|| Error::InvalidTrailer(buff.to_string()))?;
-
-                self.parse_trailer(trailer)
-            }
-            Rule::indirect_definition => {
-                let mut token = table.into_inner();
-
-                let _ = token.next();
-                let _ = token.next();
-
-                let stream = token.next().unwrap();
-                self.parse_xref_stream(stream, chunks)
-            }
-            _ => Err(Error::InvalidXref(token.to_string())),
-        }
-    }
-
-    fn parse_xref_table(&mut self, token: Pair<Rule>) -> Result<()> {
-        for subsection in token.into_inner() {
-            let mut subsection_inner = subsection.into_inner();
-
-            let first_id = subsection_inner.next().unwrap().as_str().parse::<usize>()?;
-            let expected_count = subsection_inner.next().unwrap().as_str().parse::<usize>()?;
-            let mut count = 0;
-
-            for (i, entries) in subsection_inner.enumerate() {
-                let mut token = entries.into_inner();
-
-                let offset = token
-                    .next()
-                    .ok_or(Error::InvalidXref("Expected offset".to_string()))?
-                    .as_str()
-                    .parse::<u64>()?;
-
-                let generation = token
-                    .next()
-                    .ok_or(Error::InvalidXref("Expected gen. number".to_string()))?
-                    .as_str()
-                    .parse::<usize>()?;
-
-                let occupied = token
-                    .next()
-                    .ok_or(Error::InvalidXref("Expected occupied flag".to_string()))?
-                    .as_str()
-                    .eq("n");
-
-                let entry = XrefEntry { offset, occupied };
+    fn parse_xref_table(&mut self, sections: IntoIter<XrefTableSection>) -> Result<()> {
+        for section in sections {
+            for (i, parsed_entry) in section.entries.enumerate() {
+                let entry = XrefEntry {
+                    offset: parsed_entry.offset,
+                    occupied: parsed_entry.occupied,
+                };
 
                 self.entries.insert(
-                    XrefReference {
-                        id: first_id + i,
-                        generation,
+                    IndirectReference {
+                        id: section.first_id + i,
+                        gen_id: parsed_entry.gen_id,
                     },
                     entry,
                 );
-
-                count += 1;
-            }
-            if count > expected_count {
-                return Err(Error::InvalidXrefTableSize(expected_count, count));
             }
         }
         Ok(())
     }
 
-    fn parse_trailer(&mut self, token: Pair<Rule>) -> Result<XrefMetadata> {
-        #[derive(Default)]
-        struct XrefTrailerData {
-            size: Option<usize>,
-            prev: Option<u64>,
-            file_hash: Option<PdfFileHash>,
-            root_id: Option<XrefReference>,
-            info_id: Option<XrefReference>,
-        }
+    fn parse_trailer(&mut self, input: &[u8]) -> Result<XrefMetadata> {
+        let (_, trailer) = trailer(input)
+            .finish()
+            .ok()
+            .with_context(|| error::ParseFileSnafu {
+                section: "trailer".to_string(),
+                offset: 0usize,
+            })?;
 
-        let data = parse_dictionary(token, |data: &mut XrefTrailerData, key, object| match key {
-            "Size" => {
-                let size = parse_numeric(object)?;
+        self.get_xref_data(&trailer)
+    }
 
-                data.size = Some(size);
+    fn get_xref_data(&mut self, data: &Dictionary) -> Result<XrefMetadata> {
+        let size = data
+            .get("Size")
+            .context(error::NoXrefSizeSnafu)?
+            .as_integer()
+            .with_context(|_| error::InvalidFieldSnafu {
+                field: "Size".to_string(),
+            })?;
 
-                Ok(())
-            }
-            "Prev" => {
-                let offset = parse_numeric(object)?;
+        let prev = data
+            .get("Prev")
+            .map(|object| object.as_integer())
+            .transpose()
+            .with_context(|_| error::InvalidFieldSnafu {
+                field: "Prev".to_string(),
+            })?;
 
-                data.prev = Some(offset);
-
-                Ok(())
-            }
-            "ID" => {
-                let array = parse_array(object, |el| {
-                    let hex_string = parse_string(el)?;
-                    Ok(hex_string)
-                })?;
-
+        let file_hash = data
+            .get("ID")
+            .map(|object| {
+                let array = object
+                    .as_array()
+                    .with_context(|_| error::InvalidFieldSnafu {
+                        field: "ID".to_string(),
+                    })?;
                 if array.len() != 2 {
-                    return Err(Error::InvalidXrefIDSize(array.len()));
+                    return Err(error::Error::InvalidXrefIDSize { size: array.len() });
                 }
+                let initial = array[0]
+                    .as_bytes()
+                    .with_context(|_| error::InvalidFieldSnafu {
+                        field: "ID".to_string(),
+                    })?
+                    .to_vec();
+                let current = array[1]
+                    .as_bytes()
+                    .with_context(|_| error::InvalidFieldSnafu {
+                        field: "ID".to_string(),
+                    })?
+                    .to_vec();
 
-                data.file_hash = Some(PdfFileHash {
-                    initial: array[0].clone(),
-                    current: array[1].clone(),
-                });
+                Ok(DocumentHash::from_data(initial, current))
+            })
+            .transpose()?;
 
-                Ok(())
-            }
-            "Root" => {
-                let reference = parse_indirect_reference(object)?;
+        let root_id = data
+            .get("Root")
+            .context(error::NoXrefRootSnafu)?
+            .as_indirect_ref()
+            .cloned()
+            .with_context(|_| error::InvalidFieldSnafu {
+                field: "Root".to_string(),
+            })?;
 
-                data.root_id = Some(XrefReference {
-                    id: reference.0,
-                    generation: reference.1,
-                });
+        let info_id = data
+            .get("Info")
+            .map(|object| object.as_indirect_ref().cloned())
+            .transpose()
+            .with_context(|_| error::InvalidFieldSnafu {
+                field: "Info".to_string(),
+            })?;
 
-                Ok(())
-            }
-            "Info" => {
-                let reference = parse_indirect_reference(object)?;
-
-                data.info_id = Some(XrefReference {
-                    id: reference.0,
-                    generation: reference.1,
-                });
-
-                Ok(())
-            }
-            // TODO: Support encrypt
-            _ => Err(Error::UnexpectedDictionaryField(key.to_string())),
-        })?;
-
-        let new_size = data.size.ok_or(Error::NoXrefSizeProvided)?;
-        if new_size > self.size {
-            self.size = new_size;
+        // TODO: Support encrypt
+        if size > self.size {
+            self.size = size;
         }
-
-        self.prev = data.prev;
+        self.prev = prev;
 
         Ok(XrefMetadata {
-            file_hash: data.file_hash,
-            root_id: data.root_id.ok_or(Error::NoRootObjectProvided)?,
-            info_id: data.info_id,
+            hash: file_hash,
+            root_id,
+            info_id,
         })
     }
 
-    fn parse_xref_stream(
-        &mut self,
-        token: Pair<Rule>,
-        chunks: Vec<Vec<u8>>,
-    ) -> Result<XrefMetadata> {
-        #[derive(Default, Debug)]
-        struct XrefStreamData {
-            w: Vec<usize>,
-            index: Option<Vec<(usize, usize)>>,
-            size: Option<usize>,
-            prev: Option<u64>,
-            file_hash: Option<PdfFileHash>,
+    fn parse_xref_stream(&mut self, stream: Stream) -> Result<XrefMetadata> {
+        let metadata = self.get_xref_data(&stream.dictionary)?;
 
-            root_id: Option<XrefReference>,
-            info_id: Option<XrefReference>,
+        self.extract_xref_stream_data(stream)?;
+
+        Ok(metadata)
+    }
+
+    fn extract_xref_stream_data(&mut self, stream: Stream) -> Result<()> {
+        let w = stream
+            .dictionary
+            .get("W")
+            .context(error::NoXrefStreamWSnafu)?
+            .as_array()
+            .with_context(|_| error::InvalidFieldSnafu {
+                field: "W".to_string(),
+            })?
+            .iter()
+            .map(|el| el.as_integer())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .with_context(|_| error::InvalidFieldSnafu {
+                field: "W".to_string(),
+            })?;
+        if w.len() != 3 {
+            return Err(error::Error::InvalidXrefStreamWSize { size: w.len() }.into());
         }
 
-        let data = parse_stream(
-            token,
-            &chunks,
-            "XRef",
-            |data: &mut XrefStreamData, key, object| match key {
-                "W" => {
-                    data.w = parse_array(object, |obj| {
-                        obj.as_str().parse::<usize>().map_err(Error::IntConv)
-                    })?;
-
-                    let size = data.w.len();
-                    if size != 3 {
-                        Err(Error::InvalidXrefStreamWSize(size))
-                    } else {
-                        Ok(())
-                    }
-                }
-                "Size" => {
-                    let size = parse_numeric(object)?;
-
-                    if data.index.is_none() {
-                        data.index = Some(vec![(0, size)]);
-                    }
-
-                    data.size = Some(size);
-
-                    Ok(())
-                }
-                "Index" => {
-                    let array = parse_array(object, |obj| {
-                        obj.as_str().parse::<usize>().map_err(Error::IntConv)
-                    })?
-                    .chunks(2)
-                    .map(|chunk| (chunk[0], chunk[1]))
-                    .collect();
-
-                    data.index = Some(array);
-
-                    Ok(())
-                }
-                "Prev" => {
-                    let offset = parse_numeric(object)?;
-
-                    data.prev = Some(offset);
-
-                    Ok(())
-                }
-                "Root" => {
-                    let reference = parse_indirect_reference(object)?;
-
-                    data.root_id = Some(XrefReference {
-                        id: reference.0,
-                        generation: reference.1,
-                    });
-
-                    Ok(())
-                }
-                "Info" => {
-                    let reference = parse_indirect_reference(object)?;
-
-                    data.info_id = Some(XrefReference {
-                        id: reference.0,
-                        generation: reference.1,
-                    });
-
-                    Ok(())
-                }
-                "ID" => {
-                    let array = parse_array(object, |el| {
-                        let hex_string = parse_hex_string(el)?;
-                        Ok(hex_string)
-                    })?;
-
-                    if array.len() != 2 {
-                        return Err(Error::InvalidXrefIDSize(array.len()));
-                    }
-
-                    data.file_hash = Some(PdfFileHash {
-                        initial: array[0].clone(),
-                        current: array[1].clone(),
-                    });
-
-                    Ok(())
-                }
-                // TODO: Support encrypt
-                _ => Err(Error::UnexpectedDictionaryField(key.to_string())),
-            },
-            |data, buff| {
-                let _table_size = data.size.ok_or(Error::NoXrefSizeProvided)?;
-                let entry_size = data.w.iter().sum();
-
-                let current_id = data
-                    .index
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .flat_map(|(first, last)| *first..=*last);
-
-                buff.chunks_exact(entry_size)
-                    .zip(current_id)
-                    .try_for_each(|(entry, id)| {
-                        let mut entry_data = [1, 0, 0];
-
-                        data.w
-                            .iter()
-                            .zip(entry_data.iter_mut())
-                            .fold(0, |pos, (size, data)| {
-                                if *size == 0 {
-                                    return pos;
-                                }
-
-                                *data = entry[pos..(pos + size)]
-                                    .iter()
-                                    .fold(0u64, |res, byte| res << 8 | (*byte as u64));
-                                pos + size
-                            });
-
-                        match entry_data[0] {
-                            0 => Ok(()),
-                            1 => {
-                                self.entries.insert(
-                                    XrefReference {
-                                        id,
-                                        generation: entry_data[2] as usize,
-                                    },
-                                    XrefEntry {
-                                        offset: entry_data[1],
-                                        occupied: true,
-                                    },
-                                );
-                                Ok(())
-                            }
-                            2 => Ok(()),
-                            _ => Err(Error::UnexpectedXrefStreamEntryType(entry_data[0])),
-                        }
+        let index = stream
+            .dictionary
+            .get("Index")
+            .map(|object| {
+                let array = object.as_array()?;
+                array
+                    .chunks_exact(2)
+                    .map(|chunk| {
+                        let first = chunk[0].as_integer()?;
+                        let second = chunk[1].as_integer()?;
+                        Ok((first, second))
                     })
-            },
-        )?;
+                    .collect::<std::result::Result<Vec<_>, _>>()
+            })
+            .transpose()
+            .with_context(|_| error::InvalidFieldSnafu {
+                field: "Index".to_string(),
+            })?
+            .unwrap_or_else(|| vec![(0, self.size)]);
 
-        let new_size = data.size.ok_or(Error::NoXrefSizeProvided)?;
-        if new_size > self.size {
-            self.size = new_size;
+        let entry_size = w.iter().sum();
+        let current_id = index.iter().flat_map(|(first, last)| *first..=*last);
+
+        stream
+            .data
+            .chunks_exact(entry_size)
+            .zip(current_id)
+            .try_for_each(|(entry, id)| self.parse_stream_entry(&w, entry, id))?;
+
+        Ok(())
+    }
+
+    fn parse_stream_entry(&mut self, w: &[usize], entry: &[u8], id: usize) -> Result<()> {
+        let mut entry_data = [1, 0, 0];
+
+        w.iter()
+            .zip(entry_data.iter_mut())
+            .fold(0, |pos, (size, data)| {
+                if *size == 0 {
+                    return pos;
+                }
+
+                *data = entry[pos..(pos + size)]
+                    .iter()
+                    .fold(0u64, |res, byte| res << 8 | (*byte as u64));
+                pos + size
+            });
+
+        match entry_data[0] {
+            0 => Ok(()),
+            1 => {
+                self.entries.insert(
+                    IndirectReference {
+                        id,
+                        gen_id: entry_data[2] as usize,
+                    },
+                    XrefEntry {
+                        offset: entry_data[1],
+                        occupied: true,
+                    },
+                );
+                Ok(())
+            }
+            2 => Ok(()),
+            _ => Err(error::Error::InvalidXrefStreamEntryType {
+                entry_type: entry_data[0],
+            }
+            .into()),
         }
+    }
+}
 
-        self.prev = data.prev;
+mod error {
+    use snafu::Snafu;
 
-        Ok(XrefMetadata {
-            file_hash: data.file_hash,
-            root_id: data.root_id.ok_or(Error::NoRootObjectProvided)?,
-            info_id: data.info_id,
-        })
+    #[derive(Debug, Snafu)]
+    #[snafu(visibility(pub(super)))]
+    pub(super) enum Error {
+        #[snafu(display("Failed to parse section {section}. Error at offset {offset}"))]
+        ParseFile { section: String, offset: usize },
+
+        #[snafu(display("Xref field `Size` not found"))]
+        NoXrefSize,
+
+        #[snafu(display("Xref field `Root` not found"))]
+        NoXrefRoot,
+
+        #[snafu(display("Wrong field {field} data format"))]
+        InvalidField {
+            field: String,
+            source: crate::types::ObjectError,
+        },
+
+        #[snafu(display("Invalid object stream provided"))]
+        InvalidObjectStream { source: crate::types::ObjectError },
+
+        #[snafu(display("Invalid Xref `ID` array size. Expected = 2, Got = {size}"))]
+        InvalidXrefIDSize { size: usize },
+
+        #[snafu(display("Xref stream field `W` not found"))]
+        NoXrefStreamW,
+
+        #[snafu(display("Invalid Xref Stream `W` array size. Expected = 3, Got = {size}"))]
+        InvalidXrefStreamWSize { size: usize },
+
+        #[snafu(display(
+            "Invalid Xref Stream entry type within binary data. Expected one of [0, 1, 2], Got = {entry_type}"
+        ))]
+        InvalidXrefStreamEntryType { entry_type: u64 },
+
+        #[snafu(display("Error during stream processing"))]
+        InvalidStream { source: crate::types::StreamError },
     }
 }

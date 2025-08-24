@@ -1,3 +1,3 @@
 [workspace]
-members = [ "docv-pdf" , "docv-pdf-new", "docv-ui"]
+members = [ "docv-pdf" , "docv-ui"]
 resolver = "2"
