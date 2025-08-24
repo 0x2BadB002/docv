@@ -161,6 +161,26 @@ impl Object {
         }
     }
 
+    /// Attempts to convert the object to an array slice.
+    ///
+    /// Only succeeds if the object is an `Object::Array`.
+    ///
+    /// # Arguments
+    /// * `self` - Reference to the object
+    ///
+    /// # Returns
+    /// - `Ok(&[Object])` if the object is an array
+    /// - `Err(Error)` if the object is not an array
+    ///
+    /// # Errors
+    /// Returns `Error::UnexpectedObjectType` if the object is not an array.
+    ///
+    /// # Example
+    /// ```
+    /// let array_obj = Object::Array(vec![Object::Null]);
+    /// let value = array_obj.as_array().unwrap();
+    /// assert_eq!(value, &[Object::Null]);
+    /// ```
     pub fn as_array(&self) -> Result<&[Object]> {
         match self {
             Object::Array(data) => Ok(data),
@@ -172,6 +192,26 @@ impl Object {
         }
     }
 
+    /// Attempts to convert the object to a byte slice.
+    ///
+    /// Only succeeds if the object is an `Object::String`.
+    ///
+    /// # Arguments
+    /// * `self` - Reference to the object
+    ///
+    /// # Returns
+    /// - `Ok(&[u8])` containing the string's bytes if successful
+    /// - `Err(Error)` if the object is not a string
+    ///
+    /// # Errors
+    /// Returns `Error::UnexpectedObjectType` if the object is not a string.
+    ///
+    /// # Example
+    /// ```
+    /// let string_obj = Object::String(PdfString::from("test"));
+    /// let bytes = string_obj.as_bytes().unwrap();
+    /// assert_eq!(bytes, b"test");
+    /// ```
     pub fn as_bytes(&self) -> Result<&[u8]> {
         match self {
             Object::String(data) => Ok(data.as_bytes()),
@@ -183,6 +223,26 @@ impl Object {
         }
     }
 
+    /// Attempts to convert the object to an indirect reference.
+    ///
+    /// Only succeeds if the object is an `Object::IndirectReference`.
+    ///
+    /// # Arguments
+    /// * `self` - Reference to the object
+    ///
+    /// # Returns
+    /// - `Ok(&IndirectReference)` containing the reference if successful
+    /// - `Err(Error)` if the object is not an indirect reference
+    ///
+    /// # Errors
+    /// Returns `Error::UnexpectedObjectType` if the object is not an indirect reference.
+    ///
+    /// # Example
+    /// ```
+    /// let ref_obj = Object::IndirectReference(IndirectReference::new(1, 0));
+    /// let value = ref_obj.as_indirect_ref().unwrap();
+    /// assert_eq!(value, &IndirectReference::new(1, 0));
+    /// ```
     pub fn as_indirect_ref(&self) -> Result<&IndirectReference> {
         match self {
             Object::IndirectReference(id) => Ok(id),
@@ -194,6 +254,26 @@ impl Object {
         }
     }
 
+    /// Attempts to convert the object to a stream.
+    ///
+    /// Only succeeds if the object is an `Object::Stream`.
+    ///
+    /// # Arguments
+    /// * `self` - Reference to the object
+    ///
+    /// # Returns
+    /// - `Ok(&Stream)` containing the stream if successful
+    /// - `Err(Error)` if the object is not a stream
+    ///
+    /// # Errors
+    /// Returns `Error::UnexpectedObjectType` if the object is not a stream.
+    ///
+    /// # Example
+    /// ```
+    /// let stream_obj = Object::Stream(Stream::new(Dictionary::new(), vec![]));
+    /// let value = stream_obj.as_stream().unwrap();
+    /// assert_eq!(value.dictionary(), &Dictionary::new());
+    /// ```
     pub fn as_stream(&self) -> Result<&Stream> {
         match self {
             Object::Stream(stream) => Ok(stream),
