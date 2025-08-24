@@ -4,7 +4,7 @@ use nom::{
     IResult, Parser,
     branch::alt,
     bytes::complete::tag,
-    multi::{many0, many1},
+    multi::many0,
     sequence::{delimited, preceded},
 };
 
@@ -43,7 +43,7 @@ use crate::{
 pub fn dictionary(input: &[u8]) -> IResult<&[u8], Dictionary> {
     let key_value = (
         name,
-        preceded(many1(alt((whitespace, comment, eol))), object),
+        preceded(many0(alt((whitespace, comment, eol))), object),
     );
 
     let contents = many0(delimited(
@@ -168,6 +168,16 @@ mod tests {
                     )]),
                 }),
                 expected_remainder: Some(b"rest"),
+            },
+            TestCase {
+                name: "partial xref dictionary",
+                input: b"<</Type/XRef/Size 139>>",
+                expected: true,
+                expected_result: Some(Dictionary::from([
+                    ("Type".to_string(), Object::Name(String::from("XRef"))),
+                    ("Size".to_string(), Object::Numeric(Numeric::Integer(139))),
+                ])),
+                expected_remainder: Some(b""),
             },
             // Invalid dictionaries
             TestCase {
