@@ -4,6 +4,7 @@ use nom::Finish;
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
+    document::DocumentHash,
     parser::{Xref, XrefTableSection, startxref, trailer, xref},
     types::{Dictionary, IndirectReference, Stream},
 };
@@ -27,16 +28,10 @@ pub struct XrefEntry {
 
 #[derive(Debug, Default, Clone)]
 pub struct XrefMetadata {
-    pub file_hash: Option<PdfFileHash>,
+    pub hash: Option<DocumentHash>,
 
     pub root_id: IndirectReference,
     pub info_id: Option<IndirectReference>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct PdfFileHash {
-    initial: Vec<u8>,
-    current: Vec<u8>,
 }
 
 impl XrefTable {
@@ -64,24 +59,30 @@ impl XrefTable {
         let offset = ((filesize as f64).log10().floor() + 1.0) as usize + 23;
 
         let start = (filesize as usize) - offset;
-        let (_, offset) = startxref(&input[start..])
-            .finish()
-            .ok()
-            .context(error::ParseFileSnafu { offset: start })?;
+        let (_, offset) =
+            startxref(&input[start..])
+                .finish()
+                .ok()
+                .with_context(|| error::ParseFileSnafu {
+                    section: "startxref".to_string(),
+                    offset: start,
+                })?;
 
         Ok(offset)
     }
 
     fn read_table(&mut self, input: &[u8], _filesize: u64, offset: u64) -> Result<XrefMetadata> {
-        let _startxref_size = 9 + ((offset as f64).log10().floor() + 1.0) as usize + 5;
-
         // let table_offset = filesize - offset - startxref_size as u64; // Approximate table size
 
         let start = offset as usize;
-        let (remained, data) = xref(&input[start..])
-            .finish()
-            .ok()
-            .context(error::ParseFileSnafu { offset: start })?;
+        let (remained, data) =
+            xref(&input[start..])
+                .finish()
+                .ok()
+                .with_context(|| error::ParseFileSnafu {
+                    section: "xref".to_string(),
+                    offset: start,
+                })?;
 
         match data {
             Xref::Table(sections) => {
@@ -123,7 +124,10 @@ impl XrefTable {
         let (_, trailer) = trailer(input)
             .finish()
             .ok()
-            .context(error::ParseFileSnafu { offset: 0usize })?;
+            .with_context(|| error::ParseFileSnafu {
+                section: "trailer".to_string(),
+                offset: 0usize,
+            })?;
 
         self.get_xref_data(&trailer)
     }
@@ -169,7 +173,7 @@ impl XrefTable {
                     })?
                     .to_vec();
 
-                Ok(PdfFileHash { initial, current })
+                Ok(DocumentHash::from_data(initial, current))
             })
             .transpose()?;
 
@@ -197,7 +201,7 @@ impl XrefTable {
         self.prev = prev;
 
         Ok(XrefMetadata {
-            file_hash,
+            hash: file_hash,
             root_id,
             info_id,
         })
@@ -308,8 +312,8 @@ mod error {
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub(super)))]
     pub(super) enum Error {
-        #[snafu(display("Parser error at offset {}", offset))]
-        ParseFile { offset: usize },
+        #[snafu(display("Failed to parse section {section}. Error at offset {offset}"))]
+        ParseFile { section: String, offset: usize },
 
         #[snafu(display("Xref field `Size` not found"))]
         NoXrefSize,
