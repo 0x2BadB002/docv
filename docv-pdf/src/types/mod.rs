@@ -14,3 +14,4 @@ pub use string::PdfString;
 
 pub use object::Error as ObjectError;
 pub use stream::Error as StreamError;
+pub use string::Error as StringError;

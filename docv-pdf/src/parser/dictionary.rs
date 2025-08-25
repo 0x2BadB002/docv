@@ -24,14 +24,12 @@ use crate::{
 /// markers between elements.
 ///
 /// # Example
-/// ```
 /// <<
 ///     /Key1 42
 ///     /Key2 (Text value)
 ///     % This is a comment
 ///     /Key3 [1 2 3]  % Array value
 /// >>
-/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse

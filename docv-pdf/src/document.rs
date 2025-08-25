@@ -1,16 +1,16 @@
 use std::{fs::File, path::PathBuf};
 
 use memmap2::Mmap;
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 
-use crate::xref::XrefTable;
+use crate::{info::Info, xref::Xref};
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Default, Clone)]
-#[allow(dead_code)] // NOTE: Maybe later will be removed
+#[allow(dead_code)]
 pub struct DocumentHash {
     initial: Vec<u8>,
     current: Vec<u8>,
@@ -20,7 +20,8 @@ pub struct DocumentHash {
 pub struct Document {
     size: u64,
     path: PathBuf,
-    xref: XrefTable,
+    xref: Xref,
+    info: Info,
 
     hash: Option<DocumentHash>,
 }
@@ -44,7 +45,6 @@ impl Document {
         let file = File::open(&self.path).with_context(|_| error::OpenFileSnafu {
             path: self.path.clone(),
         })?;
-
         let metadata = file.metadata().with_context(|_| error::MetadataSnafu {
             path: self.path.clone(),
         })?;
@@ -54,7 +54,6 @@ impl Document {
         let file = unsafe { Mmap::map(&file) }.with_context(|_| error::MmapSnafu {
             path: self.path.clone(),
         })?;
-
         // #[cfg(unix)]
         // {
         //     file.advise(Advice::Sequential)?; // Sequential access expected
@@ -68,6 +67,21 @@ impl Document {
             })?;
 
         self.hash = metadata.hash;
+        if metadata.info_id.is_some() {
+            let ref_id = metadata.info_id.as_ref().unwrap();
+            let offset =
+                self.xref
+                    .find_offset(ref_id)
+                    .with_context(|| error::OffsetNotFoundSnafu {
+                        object: ref_id.clone(),
+                    })?;
+
+            self.info
+                .read(&file, offset)
+                .with_context(|_| error::ReadInfoSnafu {
+                    path: self.path.clone(),
+                })?;
+        }
 
         Ok(())
     }
@@ -77,6 +91,8 @@ mod error {
     use std::path::PathBuf;
 
     use snafu::Snafu;
+
+    use crate::types::IndirectReference;
 
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub(super)))]
@@ -104,6 +120,15 @@ mod error {
             path: PathBuf,
             source: crate::xref::Error,
         },
+
+        #[snafu(display("Failed to read info dictionary for file: {}", path.display()))]
+        ReadInfo {
+            path: PathBuf,
+            source: crate::info::Error,
+        },
+
+        #[snafu(display("Failed to find offset for indirect object {object:?}"))]
+        OffsetNotFound { object: IndirectReference },
     }
 }
 
@@ -131,7 +156,9 @@ mod test {
 
             let mut pdf_file = Document::from_path(example.path());
 
-            pdf_file.read().whatever_context("Failed to read file")?;
+            pdf_file.read().with_whatever_context(|_| {
+                format!("Failed to read file {}", example.path().display())
+            })?;
         }
         Ok(())
     }
