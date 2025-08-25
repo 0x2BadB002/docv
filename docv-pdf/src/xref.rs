@@ -36,7 +36,7 @@ pub struct XrefMetadata {
 impl Xref {
     pub fn read(&mut self, input: &[u8], filesize: u64) -> Result<XrefMetadata> {
         let offset = self.read_startxref(input, filesize)?;
-        self.read_table(input, filesize, offset)
+        self.read_table(input, offset)
     }
 
     pub fn find_offset(&self, ref_id: &IndirectReference) -> Option<usize> {
@@ -46,9 +46,9 @@ impl Xref {
             .map(|entry| entry.offset)
     }
 
-    fn read_prev_table(&mut self, input: &[u8], filesize: u64) -> Result<()> {
+    pub fn read_prev_table(&mut self, input: &[u8]) -> Result<()> {
         if self.prev.is_some() {
-            self.read_table(input, filesize, self.prev.unwrap())?;
+            self.read_table(input, self.prev.unwrap())?;
         }
 
         Ok(())
@@ -69,9 +69,7 @@ impl Xref {
         Ok(offset)
     }
 
-    fn read_table(&mut self, input: &[u8], _filesize: u64, offset: u64) -> Result<XrefMetadata> {
-        // let table_offset = filesize - offset - startxref_size as u64; // Approximate table size
-
+    fn read_table(&mut self, input: &[u8], offset: u64) -> Result<XrefMetadata> {
         let start = offset as usize;
         let (remained, data) =
             xref(&input[start..])
