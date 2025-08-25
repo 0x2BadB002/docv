@@ -1,11 +1,12 @@
 use std::vec::IntoIter;
 
 use nom::{
-    IResult, ParseTo, Parser,
+    Finish, IResult, ParseTo, Parser,
     branch::alt,
     bytes::complete::{tag, take, take_until},
     character::complete::digit1,
     combinator::{opt, value},
+    error::Error,
     multi::many0,
     sequence::{delimited, preceded, separated_pair, terminated},
 };
@@ -42,8 +43,7 @@ pub enum Xref {
 #[derive(Debug, Clone)]
 pub struct XrefTableSection {
     pub first_id: usize,
-    #[allow(dead_code)]
-    pub length: usize, // NOTE: In xref.rs it could be used to check length
+    pub _length: usize,
     pub entries: IntoIter<XrefTableEntry>,
 }
 
@@ -52,7 +52,7 @@ pub struct XrefTableSection {
 /// Each entry describes the location and status of a PDF object.
 #[derive(Debug, Clone)]
 pub struct XrefTableEntry {
-    pub offset: u64,
+    pub offset: usize,
     pub gen_id: usize,
     pub occupied: bool,
 }
@@ -79,7 +79,7 @@ pub struct XrefTableEntry {
 /// `IResult` containing:
 /// - Remaining input after parsing
 /// - Offset value on success
-pub fn startxref(input: &[u8]) -> IResult<&[u8], u64> {
+pub fn startxref(input: &[u8]) -> Result<(&[u8], u64), Error<&[u8]>> {
     let value = digit1.map_opt(|res: &[u8]| res.parse_to());
 
     preceded(
@@ -87,6 +87,7 @@ pub fn startxref(input: &[u8]) -> IResult<&[u8], u64> {
         delimited((tag("startxref"), eol), value, (eol, tag("%%EOF"))),
     )
     .parse(input)
+    .finish()
 }
 
 /// Parses either a cross-reference table or an object stream containing cross-references.
@@ -109,13 +110,14 @@ pub fn startxref(input: &[u8]) -> IResult<&[u8], u64> {
 /// `IResult` containing:
 /// - Remaining input after parsing
 /// - `Xref` enum variant representing either a table or object stream
-pub fn xref(input: &[u8]) -> IResult<&[u8], Xref> {
+pub fn xref(input: &[u8]) -> Result<(&[u8], Xref), Error<&[u8]>> {
     alt((
         xref_table.map(Xref::Table),
         stream.map(Xref::ObjectStream),
         indirect_object.map(Xref::IndirectObjectStream),
     ))
     .parse(input)
+    .finish()
 }
 
 /// Parses the trailer dictionary containing document-wide information.
@@ -140,14 +142,14 @@ pub fn xref(input: &[u8]) -> IResult<&[u8], Xref> {
 /// `IResult` containing:
 /// - Remaining input after parsing
 /// - Dictionary containing trailer information
-pub fn trailer(input: &[u8]) -> IResult<&[u8], Dictionary> {
+pub fn trailer(input: &[u8]) -> Result<(&[u8], Dictionary), Error<&[u8]>> {
     let trailer = delimited(
         many0(alt((whitespace, eol, comment))),
         tag("trailer"),
         many0(alt((whitespace, eol, comment))),
     );
 
-    preceded(trailer, dictionary).parse(input)
+    preceded(trailer, dictionary).parse(input).finish()
 }
 
 /// Parses a cross-reference table from the input.
@@ -202,7 +204,7 @@ fn xref_table(input: &[u8]) -> IResult<&[u8], IntoIter<XrefTableSection>> {
     )
         .map(|((first_id, length), entries)| XrefTableSection {
             first_id,
-            length,
+            _length: length,
             entries: entries.into_iter(),
         });
 
