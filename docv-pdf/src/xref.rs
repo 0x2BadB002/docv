@@ -1,6 +1,5 @@
 use std::{collections::BTreeMap, vec::IntoIter};
 
-use nom::Finish;
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -22,7 +21,7 @@ pub struct XrefTable {
 
 #[derive(Debug, Default, Clone)]
 pub struct XrefEntry {
-    offset: u64,
+    offset: usize,
     occupied: bool,
 }
 
@@ -40,7 +39,7 @@ impl XrefTable {
         self.read_table(input, filesize, offset)
     }
 
-    pub fn find_offset(&self, ref_id: &IndirectReference) -> Option<u64> {
+    pub fn find_offset(&self, ref_id: &IndirectReference) -> Option<usize> {
         self.entries
             .get(ref_id)
             .filter(|entry| entry.occupied)
@@ -61,7 +60,6 @@ impl XrefTable {
         let start = (filesize as usize) - offset;
         let (_, offset) =
             startxref(&input[start..])
-                .finish()
                 .ok()
                 .with_context(|| error::ParseFileSnafu {
                     section: "startxref".to_string(),
@@ -77,7 +75,6 @@ impl XrefTable {
         let start = offset as usize;
         let (remained, data) =
             xref(&input[start..])
-                .finish()
                 .ok()
                 .with_context(|| error::ParseFileSnafu {
                     section: "xref".to_string(),
@@ -133,13 +130,10 @@ impl XrefTable {
     }
 
     fn parse_trailer(&mut self, input: &[u8]) -> Result<XrefMetadata> {
-        let (_, trailer) = trailer(input)
-            .finish()
-            .ok()
-            .with_context(|| error::ParseFileSnafu {
-                section: "trailer".to_string(),
-                offset: 0usize,
-            })?;
+        let (_, trailer) = trailer(input).ok().with_context(|| error::ParseFileSnafu {
+            section: "trailer".to_string(),
+            offset: 0usize,
+        })?;
 
         self.get_xref_data(&trailer)
     }
@@ -147,7 +141,9 @@ impl XrefTable {
     fn get_xref_data(&mut self, data: &Dictionary) -> Result<XrefMetadata> {
         let size = data
             .get("Size")
-            .context(error::NoXrefSizeSnafu)?
+            .with_context(|| error::FieldNotFoundSnafu {
+                field: "Size".to_string(),
+            })?
             .as_integer()
             .with_context(|_| error::InvalidFieldSnafu {
                 field: "Size".to_string(),
@@ -191,7 +187,9 @@ impl XrefTable {
 
         let root_id = data
             .get("Root")
-            .context(error::NoXrefRootSnafu)?
+            .with_context(|| error::FieldNotFoundSnafu {
+                field: "Root".to_string(),
+            })?
             .as_indirect_ref()
             .cloned()
             .with_context(|_| error::InvalidFieldSnafu {
@@ -231,7 +229,9 @@ impl XrefTable {
         let w = stream
             .dictionary
             .get("W")
-            .context(error::NoXrefStreamWSnafu)?
+            .with_context(|| error::FieldNotFoundSnafu {
+                field: "W".to_string(),
+            })?
             .as_array()
             .with_context(|_| error::InvalidFieldSnafu {
                 field: "W".to_string(),
@@ -290,7 +290,7 @@ impl XrefTable {
 
                 *data = entry[pos..(pos + size)]
                     .iter()
-                    .fold(0u64, |res, byte| res << 8 | (*byte as u64));
+                    .fold(0usize, |res, byte| res << 8 | (*byte as usize));
                 pos + size
             });
 
@@ -300,7 +300,7 @@ impl XrefTable {
                 self.entries.insert(
                     IndirectReference {
                         id,
-                        gen_id: entry_data[2] as usize,
+                        gen_id: entry_data[2],
                     },
                     XrefEntry {
                         offset: entry_data[1],
@@ -327,11 +327,8 @@ mod error {
         #[snafu(display("Failed to parse section {section}. Error at offset {offset}"))]
         ParseFile { section: String, offset: usize },
 
-        #[snafu(display("Xref field `Size` not found"))]
-        NoXrefSize,
-
-        #[snafu(display("Xref field `Root` not found"))]
-        NoXrefRoot,
+        #[snafu(display("Xref field `{field}` not found"))]
+        FieldNotFound { field: String },
 
         #[snafu(display("Wrong field {field} data format"))]
         InvalidField {
@@ -345,16 +342,13 @@ mod error {
         #[snafu(display("Invalid Xref `ID` array size. Expected = 2, Got = {size}"))]
         InvalidXrefIDSize { size: usize },
 
-        #[snafu(display("Xref stream field `W` not found"))]
-        NoXrefStreamW,
-
         #[snafu(display("Invalid Xref Stream `W` array size. Expected = 3, Got = {size}"))]
         InvalidXrefStreamWSize { size: usize },
 
         #[snafu(display(
             "Invalid Xref Stream entry type within binary data. Expected one of [0, 1, 2], Got = {entry_type}"
         ))]
-        InvalidXrefStreamEntryType { entry_type: u64 },
+        InvalidXrefStreamEntryType { entry_type: usize },
 
         #[snafu(display("Error during stream processing"))]
         InvalidStream { source: crate::types::StreamError },
