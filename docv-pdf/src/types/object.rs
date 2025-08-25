@@ -1,4 +1,6 @@
-use snafu::{OptionExt, Snafu};
+use core::str;
+
+use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::types::{Dictionary, IndirectObject, IndirectReference, Numeric, PdfString, Stream};
 
@@ -192,29 +194,9 @@ impl Object {
         }
     }
 
-    /// Attempts to convert the object to a byte slice.
-    ///
-    /// Only succeeds if the object is an `Object::String`.
-    ///
-    /// # Arguments
-    /// * `self` - Reference to the object
-    ///
-    /// # Returns
-    /// - `Ok(&[u8])` containing the string's bytes if successful
-    /// - `Err(Error)` if the object is not a string
-    ///
-    /// # Errors
-    /// Returns `Error::UnexpectedObjectType` if the object is not a string.
-    ///
-    /// # Example
-    /// ```
-    /// let string_obj = Object::String(PdfString::from("test"));
-    /// let bytes = string_obj.as_bytes().unwrap();
-    /// assert_eq!(bytes, b"test");
-    /// ```
-    pub fn as_bytes(&self) -> Result<&[u8]> {
+    pub fn as_string(&self) -> Result<&PdfString> {
         match self {
-            Object::String(data) => Ok(data.as_bytes()),
+            Object::String(data) => Ok(data),
             _ => Err(error::Error::UnexpectedObjectType {
                 expected: "String".to_string(),
                 got: self.clone(),
@@ -287,6 +269,8 @@ impl Object {
 }
 
 mod error {
+    use core::str;
+
     use snafu::Snafu;
 
     use super::Object;
