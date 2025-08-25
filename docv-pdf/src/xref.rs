@@ -4,7 +4,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     document::DocumentHash,
-    parser::{Xref, XrefTableSection, startxref, trailer, xref},
+    parser::{XrefObject, XrefTableSection, startxref, trailer, xref},
     types::{Dictionary, IndirectReference, Stream},
 };
 
@@ -13,7 +13,7 @@ pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Default, Clone)]
-pub struct XrefTable {
+pub struct Xref {
     entries: BTreeMap<IndirectReference, XrefEntry>,
     size: usize,
     prev: Option<u64>,
@@ -33,7 +33,7 @@ pub struct XrefMetadata {
     pub info_id: Option<IndirectReference>,
 }
 
-impl XrefTable {
+impl Xref {
     pub fn read(&mut self, input: &[u8], filesize: u64) -> Result<XrefMetadata> {
         let offset = self.read_startxref(input, filesize)?;
         self.read_table(input, filesize, offset)
@@ -82,19 +82,19 @@ impl XrefTable {
                 })?;
 
         match data {
-            Xref::Table(sections) => {
+            XrefObject::Table(sections) => {
                 self.parse_xref_table(sections)?;
 
                 self.parse_trailer(remained)
             }
-            Xref::ObjectStream(mut stream) => {
+            XrefObject::ObjectStream(mut stream) => {
                 stream
                     .process_filters()
                     .context(error::InvalidStreamSnafu)?;
 
                 self.parse_xref_stream(stream)
             }
-            Xref::IndirectObjectStream(indirect_object) => {
+            XrefObject::IndirectObjectStream(indirect_object) => {
                 let mut stream = indirect_object
                     .as_stream()
                     .with_context(|_| error::InvalidObjectStreamSnafu)?
@@ -169,16 +169,18 @@ impl XrefTable {
                     return Err(error::Error::InvalidXrefIDSize { size: array.len() });
                 }
                 let initial = array[0]
-                    .as_bytes()
+                    .as_string()
                     .with_context(|_| error::InvalidFieldSnafu {
                         field: "ID".to_string(),
                     })?
+                    .as_bytes()
                     .to_vec();
                 let current = array[1]
-                    .as_bytes()
+                    .as_string()
                     .with_context(|_| error::InvalidFieldSnafu {
                         field: "ID".to_string(),
                     })?
+                    .as_bytes()
                     .to_vec();
 
                 Ok(DocumentHash::from_data(initial, current))

@@ -27,7 +27,7 @@ use crate::{
 /// 1. Traditional cross-reference table with explicit offset entries
 /// 2. Object stream containing compressed cross-reference data
 #[derive(Debug, Clone)]
-pub enum Xref {
+pub enum XrefObject {
     /// Traditional cross-reference table format
     Table(IntoIter<XrefTableSection>),
     /// Compressed cross-reference stream object
@@ -110,11 +110,11 @@ pub fn startxref(input: &[u8]) -> Result<(&[u8], u64), Error<&[u8]>> {
 /// `IResult` containing:
 /// - Remaining input after parsing
 /// - `Xref` enum variant representing either a table or object stream
-pub fn xref(input: &[u8]) -> Result<(&[u8], Xref), Error<&[u8]>> {
+pub fn xref(input: &[u8]) -> Result<(&[u8], XrefObject), Error<&[u8]>> {
     alt((
-        xref_table.map(Xref::Table),
-        stream.map(Xref::ObjectStream),
-        indirect_object.map(Xref::IndirectObjectStream),
+        xref_table.map(XrefObject::Table),
+        stream.map(XrefObject::ObjectStream),
+        indirect_object.map(XrefObject::IndirectObjectStream),
     ))
     .parse(input)
     .finish()
@@ -371,7 +371,7 @@ mod tests {
             if case.expected {
                 let (actual_remainder, actual_xref) = result.unwrap();
 
-                if let Xref::Table(sections) = actual_xref {
+                if let XrefObject::Table(sections) = actual_xref {
                     let sections: Vec<_> = sections.collect();
                     let total_entries: Vec<XrefTableEntry> = sections
                         .clone()
