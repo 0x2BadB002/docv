@@ -1,5 +1,6 @@
 mod array;
 mod boolean;
+mod date;
 mod dictionary;
 mod file;
 mod indirect_object;
@@ -11,4 +12,6 @@ mod stream;
 mod string;
 mod whitespace;
 
-pub use file::{Xref, XrefTableSection, startxref, trailer, xref};
+pub use date::string_date;
+pub use dictionary::dictionary;
+pub use file::{XrefObject, XrefTableSection, startxref, trailer, xref};

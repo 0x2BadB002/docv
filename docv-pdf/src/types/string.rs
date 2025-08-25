@@ -1,3 +1,12 @@
+use chrono::{DateTime, FixedOffset};
+use snafu::{OptionExt, ResultExt, Snafu};
+
+use crate::parser::string_date;
+
+#[derive(Debug, Snafu)]
+pub struct Error(error::Error);
+type Result<T> = std::result::Result<T, Error>;
+
 /// Represents string values in a PDF document according to PDF 2.0 specification.
 ///
 /// PDF supports two types of string objects:
@@ -27,13 +36,11 @@
 /// - JavaScript code and form field values
 ///
 /// # Examples
-/// ```
 /// (Hello World)              // Literal string
 /// (Hello\nWorld)             // Literal string with escape
 /// (Test\()                   // Literal string with escaped parenthesis
 /// <48656C6C6F20576F726C64>  // Hexadecimal string for "Hello World"
 /// <4F60 597D>                // Hexadecimal string with spaces (你好 in UTF-16BE)
-/// ```
 #[derive(Debug, PartialEq, Clone)]
 pub enum PdfString {
     /// A literal string enclosed in parentheses with support for escape sequences.
@@ -49,26 +56,52 @@ pub enum PdfString {
 }
 
 impl PdfString {
-    /// Returns the underlying byte representation of the PDF string.
-    ///
-    /// For literal strings, returns the UTF-8 encoded bytes of the string content.
-    /// For hexadecimal strings, returns the decoded binary data directly.
-    ///
-    /// # Returns
-    /// A byte slice containing the raw data of the string.
-    ///
-    /// # Example
-    /// ```
-    /// let literal = PdfString::Literal("Hello".to_string());
-    /// assert_eq!(literal.as_bytes(), b"Hello");
-    ///
-    /// let hex = PdfString::Hexadecimal(vec![0x48, 0x65, 0x6C, 0x6C, 0x6F]);
-    /// assert_eq!(hex.as_bytes(), &[0x48, 0x65, 0x6C, 0x6C, 0x6F]);
-    /// ```
+    pub fn as_str(&self) -> Result<&str> {
+        match self {
+            PdfString::Literal(data) => Ok(data.as_str()),
+            PdfString::Hexadecimal(data) => {
+                let data = str::from_utf8(data).with_context(|_| error::EncodingStrSnafu {
+                    data: data.to_vec(),
+                })?;
+
+                Ok(data)
+            }
+        }
+    }
+
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             PdfString::Literal(data) => data.as_bytes(),
             PdfString::Hexadecimal(data) => data.as_slice(),
         }
+    }
+
+    pub fn to_date(&self) -> Result<DateTime<FixedOffset>> {
+        let input = &self.as_str()?;
+        let (_, date) = string_date(input)
+            .ok()
+            .with_context(|| error::ParseToSnafu {
+                data: input.to_string(),
+                target: "date",
+            })?;
+
+        Ok(date)
+    }
+}
+
+mod error {
+    use snafu::Snafu;
+
+    #[derive(Debug, Snafu)]
+    #[snafu(visibility(pub(super)))]
+    pub(super) enum Error {
+        #[snafu(display("Can't encode into UTF-8. Data = {data:?}"))]
+        EncodingStr {
+            data: Vec<u8>,
+            source: std::str::Utf8Error,
+        },
+
+        #[snafu(display("Can't parse inner string '{data}' into {target}"))]
+        ParseTo { data: String, target: String },
     }
 }
