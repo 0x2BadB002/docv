@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{fmt::format, path::PathBuf, sync::Arc};
 
 use iced::{
     Alignment, Element, Length, Subscription, Task, Theme,
@@ -18,6 +18,7 @@ enum Message {
     OpenFile(PathBuf),
     SetTheme(iced::Theme),
     Quit,
+    ShowErrors,
 
     ShowCmdline,
     FileOpened(Arc<Document>),
@@ -27,7 +28,9 @@ enum Message {
 #[derive(Default, Debug)]
 struct App {
     file: Option<Arc<Document>>,
-    error: Option<Error>,
+    error: Option<Arc<Error>>,
+    prev_error: Option<Arc<Error>>,
+    error_backtrace: bool,
 
     cmdline: cmdline::Cmdline,
     theme: iced::Theme,
@@ -60,19 +63,32 @@ impl App {
                     .unwrap_or_else(Message::ErrorOccurred)
             }),
             Message::Quit => iced::exit(),
+            Message::ShowErrors => {
+                self.error_backtrace = true;
+
+                Task::none()
+            }
             Message::ShowCmdline => {
                 self.error = None;
+                self.error_backtrace = false;
 
                 self.cmdline.show().map(Message::CmdLine)
             }
             Message::FileOpened(file) => {
                 self.error = None;
+                self.error_backtrace = false;
+
                 self.file = Some(file);
 
                 Task::none()
             }
             Message::ErrorOccurred(error) => {
-                self.error = Some(error);
+                self.error_backtrace = false;
+                self.prev_error = self.error.clone();
+                self.error = Some(Arc::new(error));
+                if self.prev_error.is_none() {
+                    self.prev_error = self.error.clone();
+                }
 
                 Task::none()
             }
@@ -90,7 +106,17 @@ impl App {
                 text(
                     self.file
                         .as_ref()
-                        .map_or("No file opened.".to_string(), |file| format!("{:#?}", file)),
+                        .map(|file| format!("{file:#?}"))
+                        .or_else(|| {
+                            if !self.error_backtrace {
+                                return None;
+                            }
+
+                            self.prev_error
+                                .as_ref()
+                                .map(|err| format!("{err:#?}").to_string())
+                        })
+                        .unwrap_or_else(|| "No file openned".to_string()),
                 )
                 .center(),
             )
