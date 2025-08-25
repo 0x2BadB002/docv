@@ -25,6 +25,7 @@ pub struct Cmdline {
 pub enum Action {
     Quit,
     Open(PathBuf),
+    ShowErrorStack,
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +45,7 @@ impl Cmdline {
             Message::Action(action) => match action {
                 Action::Quit => Task::done(super::Message::Quit),
                 Action::Open(filepath) => Task::done(super::Message::OpenFile(filepath)),
+                Action::ShowErrorStack => Task::done(super::Message::ShowErrors),
             },
             Message::OnCommandInput(cmd) => {
                 if cmd.is_empty() {
@@ -149,6 +151,7 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
 
                     Ok(Action::Open(path))
                 }
+                Rule::errors => Ok(Action::ShowErrorStack),
                 _ => Err(Error::ParserError(String::from("Unexpected token"))),
             }
         }

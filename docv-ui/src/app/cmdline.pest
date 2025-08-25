@@ -1,10 +1,11 @@
 COMMENT    = _{ "#" ~ (!"\n" ~ ANY)* }
 WHITESPACE = _{ " " }
 
-quit = !{ "quit" | "q" }
-open = !{ "open" | "o" }
+quit   = !{ "quit" | "q" }
+open   = !{ "open" | "o" }
+errors = !{ "errors" }
 
-verb = !{ quit | open }
+verb = !{ quit | open | errors }
 
 arg = !{ (!WHITESPACE ~ ANY)+ }
 
