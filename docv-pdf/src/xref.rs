@@ -115,12 +115,18 @@ impl Xref {
     fn parse_xref_table(&mut self, sections: Vec<XrefTableSection>) -> Result<()> {
         for section in sections.iter() {
             for (i, parsed_entry) in section.entries.iter().enumerate() {
-                let entry = XrefEntry::Occupied {
-                    offset: parsed_entry.offset,
-                };
                 let key = IndirectReference {
                     id: section.first_id + i,
                     gen_id: parsed_entry.gen_id,
+                };
+                let entry = if parsed_entry.occupied {
+                    XrefEntry::Occupied {
+                        offset: parsed_entry.offset,
+                    }
+                } else {
+                    XrefEntry::Free {
+                        next_id: section.first_id + i,
+                    }
                 };
 
                 self.entries.insert(key, entry);

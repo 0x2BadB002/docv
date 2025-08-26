@@ -1,5 +1,3 @@
-use std::vec::IntoIter;
-
 use nom::{
     Finish, IResult, ParseTo, Parser,
     branch::alt,
