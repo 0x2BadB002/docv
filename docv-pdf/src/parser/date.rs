@@ -221,6 +221,18 @@ mod tests {
                 ),
                 expected_remainder: Some(""),
             },
+            TestCase {
+                name: "invalid datetime with BOM bytes in begining",
+                input: "\\357\\273\\277D:20211230134641+11'00'",
+                expected: false,
+                expected_result: Some(
+                    FixedOffset::east_opt(39600)
+                        .unwrap()
+                        .with_ymd_and_hms(2021, 12, 30, 13, 46, 41)
+                        .unwrap(),
+                ),
+                expected_remainder: Some("'"),
+            },
             // Invalid dates
             TestCase {
                 name: "invalid missing D prefix",
