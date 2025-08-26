@@ -4,10 +4,9 @@ use memmap2::Mmap;
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
-    info::Info,
     parser::read_object,
+    structures::{Info, Xref, XrefEntry},
     types::{IndirectReference, Object},
-    xref::{Xref, XrefEntry},
 };
 
 #[derive(Debug, Snafu)]
@@ -144,10 +143,14 @@ mod error {
         },
 
         #[snafu(display("Failed to read xref table"))]
-        ReadXref { source: crate::xref::Error },
+        ReadXref {
+            source: crate::structures::XrefError,
+        },
 
         #[snafu(display("Failed to populate info dictionary"))]
-        PopulateInfo { source: crate::info::Error },
+        PopulateInfo {
+            source: crate::structures::InfoError,
+        },
 
         #[snafu(display("Failed to read info dictionary"))]
         ReadEntry,
