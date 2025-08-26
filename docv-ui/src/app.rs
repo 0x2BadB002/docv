@@ -168,9 +168,9 @@ impl App {
 }
 
 async fn read_file(filepath: PathBuf) -> Result<Arc<Document>> {
-    let mut file = Document::from_path(filepath);
+    let mut file = Document::from_path(&filepath)?;
 
-    file.read()?;
+    file.read_xref()?;
 
     Ok(Arc::new(file))
 }
