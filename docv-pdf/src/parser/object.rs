@@ -161,11 +161,14 @@ mod tests {
                 name: "array object",
                 input: b"[1 2 /Three]",
                 expected: true,
-                expected_value: Some(Object::Array(vec![
-                    Object::Numeric(Numeric::Integer(1)),
-                    Object::Numeric(Numeric::Integer(2)),
-                    Object::Name("Three".to_string()),
-                ])),
+                expected_value: Some(Object::Array(
+                    vec![
+                        Object::Numeric(Numeric::Integer(1)),
+                        Object::Numeric(Numeric::Integer(2)),
+                        Object::Name("Three".to_string()),
+                    ]
+                    .into(),
+                )),
                 expected_remainder: Some(b""),
             },
             // Dictionary test

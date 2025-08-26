@@ -5,7 +5,7 @@ use crate::{
         object::object,
         whitespace::{comment, eol, whitespace},
     },
-    types::Object,
+    types::Array,
 };
 
 /// Parses a PDF array from the input.
@@ -14,23 +14,23 @@ use crate::{
 /// Allows optional whitespace, comments, and end-of-line markers between elements.
 ///
 /// # Example
-/// ```
 /// [1 (two) /three]  // Array with three elements
-/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
 ///
 /// # Returns
 /// `IResult` containing remaining input and parsed `Vec<Object>` on success
-pub fn array(input: &[u8]) -> IResult<&[u8], Vec<Object>> {
+pub fn array(input: &[u8]) -> IResult<&[u8], Array> {
     let contents = many0(delimited(
         many0(alt((whitespace, comment, eol))),
         object,
         many0(alt((whitespace, comment, eol))),
     ));
 
-    delimited(tag("["), contents, tag("]")).parse(input)
+    delimited(tag("["), contents, tag("]"))
+        .map(Array::from)
+        .parse(input)
 }
 
 #[cfg(test)]
@@ -46,7 +46,7 @@ mod test {
             name: &'static str,
             input: &'static [u8],
             expected: bool,
-            expected_result: Option<Vec<Object>>,
+            expected_result: Option<Array>,
             expected_remainder: Option<&'static [u8]>,
         }
 
@@ -56,54 +56,69 @@ mod test {
                 name: "valid empty array",
                 input: b"[]",
                 expected: true,
-                expected_result: Some(vec![]),
+                expected_result: Some(vec![].into()),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid array with integers",
                 input: b"[1 2 3]",
                 expected: true,
-                expected_result: Some(vec![
-                    Object::Numeric(Numeric::Integer(1)),
-                    Object::Numeric(Numeric::Integer(2)),
-                    Object::Numeric(Numeric::Integer(3)),
-                ]),
+                expected_result: Some(
+                    vec![
+                        Object::Numeric(Numeric::Integer(1)),
+                        Object::Numeric(Numeric::Integer(2)),
+                        Object::Numeric(Numeric::Integer(3)),
+                    ]
+                    .into(),
+                ),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid array with mixed types",
                 input: b"[1 (two) /three]",
                 expected: true,
-                expected_result: Some(vec![
-                    Object::Numeric(Numeric::Integer(1)),
-                    Object::String(PdfString::Literal("two".to_string())),
-                    Object::Name(String::from("three")),
-                ]),
+                expected_result: Some(
+                    vec![
+                        Object::Numeric(Numeric::Integer(1)),
+                        Object::String(PdfString::Literal("two".to_string())),
+                        Object::Name(String::from("three")),
+                    ]
+                    .into(),
+                ),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid array with comments and whitespace",
                 input: b"[ % comment\n1 % another\n (two) \t /three \n]",
                 expected: true,
-                expected_result: Some(vec![
-                    Object::Numeric(Numeric::Integer(1)),
-                    Object::String(PdfString::Literal("two".to_string())),
-                    Object::Name(String::from("three")),
-                ]),
+                expected_result: Some(
+                    vec![
+                        Object::Numeric(Numeric::Integer(1)),
+                        Object::String(PdfString::Literal("two".to_string())),
+                        Object::Name(String::from("three")),
+                    ]
+                    .into(),
+                ),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid array with nested arrays",
                 input: b"[1 [2 3] (four)]",
                 expected: true,
-                expected_result: Some(vec![
-                    Object::Numeric(Numeric::Integer(1)),
-                    Object::Array(vec![
-                        Object::Numeric(Numeric::Integer(2)),
-                        Object::Numeric(Numeric::Integer(3)),
-                    ]),
-                    Object::String(PdfString::Literal("four".to_string())),
-                ]),
+                expected_result: Some(
+                    vec![
+                        Object::Numeric(Numeric::Integer(1)),
+                        Object::Array(
+                            vec![
+                                Object::Numeric(Numeric::Integer(2)),
+                                Object::Numeric(Numeric::Integer(3)),
+                            ]
+                            .into(),
+                        ),
+                        Object::String(PdfString::Literal("four".to_string())),
+                    ]
+                    .into(),
+                ),
                 expected_remainder: Some(b""),
             },
             // Valid with remainder
@@ -111,11 +126,14 @@ mod test {
                 name: "array with remainder",
                 input: b"[1 2 3]rest",
                 expected: true,
-                expected_result: Some(vec![
-                    Object::Numeric(Numeric::Integer(1)),
-                    Object::Numeric(Numeric::Integer(2)),
-                    Object::Numeric(Numeric::Integer(3)),
-                ]),
+                expected_result: Some(
+                    vec![
+                        Object::Numeric(Numeric::Integer(1)),
+                        Object::Numeric(Numeric::Integer(2)),
+                        Object::Numeric(Numeric::Integer(3)),
+                    ]
+                    .into(),
+                ),
                 expected_remainder: Some(b"rest"),
             },
             // Invalid arrays

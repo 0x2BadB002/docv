@@ -1,3 +1,4 @@
+mod array;
 mod dictionary;
 mod indirect_object;
 mod numeric;
@@ -5,6 +6,7 @@ mod object;
 mod stream;
 mod string;
 
+pub use array::Array;
 pub use dictionary::Dictionary;
 pub use indirect_object::{IndirectObject, IndirectReference};
 pub use numeric::Numeric;
