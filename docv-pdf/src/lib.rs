@@ -1,7 +1,6 @@
 mod document;
-mod info;
 mod parser;
+mod structures;
 mod types;
-mod xref;
 
 pub use document::{Document, Error};
