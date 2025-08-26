@@ -23,15 +23,15 @@ use crate::{
 ///
 /// PDF documents can store cross-reference information in two formats:
 /// 1. Traditional cross-reference table with explicit offset entries
-/// 2. Object stream containing compressed cross-reference data
+/// 2. Stream containing compressed cross-reference data
 #[derive(Debug, Clone)]
 pub enum XrefObject {
     /// Traditional cross-reference table format
     Table(Vec<XrefTableSection>),
     /// Compressed cross-reference stream object
-    ObjectStream(Stream),
+    Stream(Stream),
     /// Indirect object definition with compressed cross-reference stream object
-    IndirectObjectStream(IndirectObject),
+    IndirectStream(IndirectObject),
 }
 
 /// Represents a section of a cross-reference table.
@@ -111,8 +111,8 @@ pub fn read_startxref(input: &[u8]) -> Result<(&[u8], u64), Error<&[u8]>> {
 pub fn read_xref(input: &[u8]) -> Result<(&[u8], XrefObject), Error<&[u8]>> {
     alt((
         xref_table.map(XrefObject::Table),
-        stream.map(XrefObject::ObjectStream),
-        indirect_object.map(XrefObject::IndirectObjectStream),
+        stream.map(XrefObject::Stream),
+        indirect_object.map(XrefObject::IndirectStream),
     ))
     .parse(input)
     .finish()
