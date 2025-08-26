@@ -1,12 +1,10 @@
 use std::{fs::File, path::PathBuf};
 
-use memmap2::Mmap;
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 
 use crate::{
-    parser::read_object,
-    structures::{Hash, Info, Xref, XrefEntry},
-    types::{IndirectReference, Object},
+    objects::Objects,
+    structures::{Hash, Info},
 };
 
 #[derive(Debug, Snafu)]
@@ -15,11 +13,10 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub struct Document {
-    size: u64,
-    file: Mmap,
-    xref: Xref,
     info: Info,
+    objects: Objects,
 
+    size: u64,
     hash: Option<Hash>,
 }
 
@@ -27,77 +24,29 @@ impl Document {
     pub fn from_path(path: &PathBuf) -> Result<Self> {
         let file =
             File::open(path).with_context(|_| error::OpenFileSnafu { path: path.clone() })?;
-        let metadata = file
-            .metadata()
-            .with_context(|_| error::MetadataSnafu { path: path.clone() })?;
 
-        let size = metadata.len();
-        let file = unsafe { Mmap::map(&file) }.with_context(|_| error::MmapSnafu { path })?;
+        let file_metadata = file.metadata().context(error::MetadataSnafu)?;
 
-        // #[cfg(unix)]
-        // {
-        //     file.advise(Advice::Sequential)?; // Sequential access expected
-        // }
+        let (mut objects, metadata) = Objects::from_file(file).context(error::ObjectsSnafu)?;
+
+        let info = metadata
+            .info_id
+            .map(|object| -> Result<Info> {
+                let object = objects
+                    .get_object(&object)
+                    .with_context(|_| error::ObjectSnafu { object })?;
+
+                Ok(Info::from_object(object).context(error::InfoSnafu)?)
+            })
+            .transpose()?;
 
         Ok(Self {
-            size,
-            file,
+            info: info.unwrap_or_default(),
+            objects,
 
-            xref: Xref::default(),
-            info: Info::default(),
-            hash: None,
+            size: file_metadata.len(),
+            hash: metadata.hash,
         })
-    }
-
-    pub fn read_xref(&mut self) -> Result<()> {
-        let metadata = self
-            .xref
-            .read(&self.file, self.size)
-            .context(error::ReadXrefSnafu)?;
-
-        self.hash = metadata.hash;
-        if metadata.info_id.is_some() {
-            let info_id = metadata.info_id.as_ref().unwrap();
-
-            let info_object = self.get_object(info_id)?;
-
-            self.info
-                .populate_from_dictionary(info_object)
-                .context(error::PopulateInfoSnafu)?;
-        }
-
-        Ok(())
-    }
-
-    fn get_object(&mut self, object_reference: &IndirectReference) -> Result<Object> {
-        let mut entry = self.xref.find_entry(object_reference);
-
-        while entry.is_none() && self.xref.has_prev_table() {
-            self.xref
-                .read_prev_table(&self.file)
-                .context(error::ReadXrefSnafu)?;
-
-            entry = self.xref.find_entry(object_reference);
-        }
-
-        let entry = entry.with_context(|| error::EntryNotFoundSnafu {
-            object: object_reference.clone(),
-        })?;
-
-        match entry {
-            XrefEntry::Free { .. } => Err(error::Error::EntryIsFree {
-                object: object_reference.clone(),
-            }
-            .into()),
-            XrefEntry::Occupied { offset } => {
-                let object = read_object(&self.file[(*offset)..])
-                    .ok()
-                    .context(error::ReadEntrySnafu)?;
-
-                Ok(object)
-            }
-            XrefEntry::OccupiedCompressed { .. } => Ok(Object::Null),
-        }
     }
 }
 
@@ -117,36 +66,22 @@ mod error {
             source: std::io::Error,
         },
 
-        #[snafu(display("Failed to get metadata for file: {}", path.display()))]
-        Metadata {
-            path: PathBuf,
-            source: std::io::Error,
-        },
+        #[snafu(display("Failed to get metadata"))]
+        Metadata { source: std::io::Error },
 
-        #[snafu(display("Failed to create mmap for file: {}", path.display()))]
-        Mmap {
-            path: PathBuf,
-            source: std::io::Error,
-        },
+        #[snafu(display("Failed to get objects"))]
+        Objects { source: crate::objects::Error },
 
-        #[snafu(display("Failed to read xref table"))]
-        ReadXref {
-            source: crate::structures::XrefError,
-        },
-
-        #[snafu(display("Failed to populate info dictionary"))]
-        PopulateInfo {
-            source: crate::structures::InfoError,
+        #[snafu(display("Failed to get object {object}"))]
+        Object {
+            object: IndirectReference,
+            source: crate::objects::Error,
         },
 
         #[snafu(display("Failed to read info dictionary"))]
-        ReadEntry,
-
-        #[snafu(display("Failed to find indirect object {object:?}"))]
-        EntryNotFound { object: IndirectReference },
-
-        #[snafu(display("Entry for indirect object {object:?} is free"))]
-        EntryIsFree { object: IndirectReference },
+        Info {
+            source: crate::structures::InfoError,
+        },
     }
 }
 
@@ -173,12 +108,8 @@ mod test {
             let entry = example.whatever_context("Failed to directory entry")?;
             let path = entry.path();
 
-            let mut document = Document::from_path(&path)
+            let _document = Document::from_path(&path)
                 .with_whatever_context(|_| format!("Failed to open file {}", path.display()))?;
-
-            document
-                .read_xref()
-                .with_whatever_context(|_| format!("Failed to read file {}", path.display()))?;
         }
         Ok(())
     }
