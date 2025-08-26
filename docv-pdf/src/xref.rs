@@ -19,10 +19,18 @@ pub struct Xref {
     prev: Option<u64>,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct XrefEntry {
-    offset: usize,
-    occupied: bool,
+#[derive(Debug, Clone)]
+pub enum XrefEntry {
+    Free {
+        next_id: usize,
+    },
+    Occupied {
+        offset: usize,
+    },
+    OccupiedCompressed {
+        stream_id: usize,
+        stream_offset_id: usize,
+    },
 }
 
 #[derive(Debug, Default, Clone)]
@@ -39,11 +47,8 @@ impl Xref {
         self.read_table(input, offset)
     }
 
-    pub fn find_offset(&self, ref_id: &IndirectReference) -> Option<usize> {
-        self.entries
-            .get(ref_id)
-            .filter(|entry| entry.occupied)
-            .map(|entry| entry.offset)
+    pub fn find_entry<'a>(&'a self, ref_id: &IndirectReference) -> Option<&'a XrefEntry> {
+        self.entries.get(ref_id)
     }
 
     pub fn read_prev_table(&mut self, input: &[u8]) -> Result<()> {
@@ -54,7 +59,7 @@ impl Xref {
         Ok(())
     }
 
-    fn read_startxref(&mut self, input: &[u8], filesize: u64) -> Result<u64> {
+    pub fn read_startxref(&mut self, input: &[u8], filesize: u64) -> Result<u64> {
         let offset = ((filesize as f64).log10().floor() + 1.0) as usize + 23;
 
         let start = (filesize as usize) - offset;
@@ -110,18 +115,15 @@ impl Xref {
     fn parse_xref_table(&mut self, sections: IntoIter<XrefTableSection>) -> Result<()> {
         for section in sections {
             for (i, parsed_entry) in section.entries.enumerate() {
-                let entry = XrefEntry {
+                let entry = XrefEntry::Occupied {
                     offset: parsed_entry.offset,
-                    occupied: parsed_entry.occupied,
+                };
+                let key = IndirectReference {
+                    id: section.first_id + i,
+                    gen_id: parsed_entry.gen_id,
                 };
 
-                self.entries.insert(
-                    IndirectReference {
-                        id: section.first_id + i,
-                        gen_id: parsed_entry.gen_id,
-                    },
-                    entry,
-                );
+                self.entries.insert(key, entry);
             }
         }
         Ok(())
@@ -295,21 +297,43 @@ impl Xref {
             });
 
         match entry_data[0] {
-            0 => Ok(()),
-            1 => {
-                self.entries.insert(
-                    IndirectReference {
-                        id,
-                        gen_id: entry_data[2],
-                    },
-                    XrefEntry {
-                        offset: entry_data[1],
-                        occupied: true,
-                    },
-                );
+            0 => {
+                let key = IndirectReference {
+                    id,
+                    gen_id: entry_data[2],
+                };
+                let entry = XrefEntry::Free {
+                    next_id: entry_data[1],
+                };
+
+                self.entries.insert(key, entry);
+
                 Ok(())
             }
-            2 => Ok(()),
+            1 => {
+                let key = IndirectReference {
+                    id,
+                    gen_id: entry_data[2],
+                };
+                let entry = XrefEntry::Occupied {
+                    offset: entry_data[1],
+                };
+
+                self.entries.insert(key, entry);
+
+                Ok(())
+            }
+            2 => {
+                let key = IndirectReference { id, gen_id: 0 };
+                let entry = XrefEntry::OccupiedCompressed {
+                    stream_id: entry_data[1],
+                    stream_offset_id: entry_data[2],
+                };
+
+                self.entries.insert(key, entry);
+
+                Ok(())
+            }
             _ => Err(error::Error::InvalidXrefStreamEntryType {
                 entry_type: entry_data[0],
             }
