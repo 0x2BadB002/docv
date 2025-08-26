@@ -59,23 +59,22 @@ fn literal_string(input: &[u8]) -> IResult<&[u8], PdfString> {
         recognize(literal_string).map(Fragment::InnerString),
     ));
 
-    let final_str = fold(
-        0..,
-        content,
-        std::string::String::new,
-        |mut data, fragment| {
-            match fragment {
-                Fragment::Literal(chunk) => data.push_str(str::from_utf8(chunk).unwrap()),
-                Fragment::EscapedChar(c) => data.push(c as char),
-                Fragment::Whitespace => {}
-                Fragment::InnerString(inner) => data.push_str(str::from_utf8(inner).unwrap()),
-            }
-            data
-        },
-    );
+    let final_str = fold(0.., content, Vec::new, |mut data, fragment| {
+        match fragment {
+            Fragment::Literal(chunk) => data.extend_from_slice(chunk),
+            Fragment::EscapedChar(c) => data.push(c),
+            Fragment::Whitespace => {}
+            Fragment::InnerString(inner) => data.extend_from_slice(inner),
+        }
+        data
+    });
 
     delimited(tag("("), final_str, tag(")"))
-        .map(PdfString::Literal)
+        .map_res(|data| -> Result<PdfString, std::string::FromUtf8Error> {
+            let data = String::from_utf8(data)?;
+
+            Ok(PdfString::Literal(data))
+        })
         .parse(input)
 }
 
@@ -182,6 +181,15 @@ mod test {
                 input: b"()",
                 expected: true,
                 expected_result: Some(PdfString::Literal("".to_string())),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid string with BOM marker",
+                input: b"(\\357\\273\\277D:20211230134641+11'00')",
+                expected: true,
+                expected_result: Some(PdfString::Literal(
+                    "\u{FEFF}D:20211230134641+11'00'".to_string(),
+                )),
                 expected_remainder: Some(b""),
             },
             // Valid hexadecimal strings
