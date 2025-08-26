@@ -42,19 +42,8 @@ pub struct XrefMetadata {
 }
 
 impl Xref {
-    pub fn read(&mut self, input: &[u8], filesize: usize) -> Result<XrefMetadata> {
-        let offset = self.read_startxref(input, filesize)?;
-        self.read_table(input, offset)
-    }
-
     pub fn find_entry<'a>(&'a self, ref_id: &IndirectReference) -> Option<&'a XrefEntry> {
         self.entries.get(ref_id)
-    }
-
-    pub fn read_prev_table(&mut self, input: &[u8]) -> Result<()> {
-        self.read_table(input, self.prev.context(error::NoPrevXrefSnafu)?)?;
-
-        Ok(())
     }
 
     pub fn has_prev_table(&self) -> bool {
@@ -64,7 +53,7 @@ impl Xref {
     pub fn read_startxref(&mut self, input: &[u8], filesize: usize) -> Result<u64> {
         let offset = ((filesize as f64).log10().floor() + 1.0) as usize + 23;
 
-        let start = (filesize as usize) - offset;
+        let start = filesize - offset;
         let (_, offset) =
             read_startxref(&input[start..])
                 .ok()
@@ -76,7 +65,7 @@ impl Xref {
         Ok(offset)
     }
 
-    fn read_table(&mut self, input: &[u8], offset: u64) -> Result<XrefMetadata> {
+    pub fn read_table(&mut self, input: &[u8], offset: u64) -> Result<XrefMetadata> {
         let start = offset as usize;
         let (remained, data) =
             read_xref(&input[start..])
@@ -92,14 +81,14 @@ impl Xref {
 
                 self.parse_trailer(remained)
             }
-            XrefObject::ObjectStream(mut stream) => {
+            XrefObject::Stream(mut stream) => {
                 stream
                     .process_filters()
                     .context(error::StreamProcessingSnafu)?;
 
                 self.parse_xref_stream(stream)
             }
-            XrefObject::IndirectObjectStream(indirect_object) => {
+            XrefObject::IndirectStream(indirect_object) => {
                 let mut stream = indirect_object
                     .as_stream()
                     .with_context(|_| error::InvalidStreamSnafu)?
@@ -112,6 +101,12 @@ impl Xref {
                 self.parse_xref_stream(stream)
             }
         }
+    }
+
+    pub fn read_prev_table(&mut self, input: &[u8]) -> Result<()> {
+        self.read_table(input, self.prev.context(error::NoPrevXrefSnafu)?)?;
+
+        Ok(())
     }
 
     fn parse_xref_table(&mut self, sections: Vec<XrefTableSection>) -> Result<()> {

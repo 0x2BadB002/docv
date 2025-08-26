@@ -29,7 +29,12 @@ impl Objects {
         //     file.advise(Advice::Sequential)?; // Sequential access expected
         // }
 
-        let metadata = xref.read(&file, file.len()).context(error::ReadXrefSnafu)?;
+        let xref_offset = xref
+            .read_startxref(&file, file.len())
+            .context(error::ReadXrefSnafu)?;
+        let metadata = xref
+            .read_table(&file, xref_offset)
+            .context(error::ReadXrefSnafu)?;
 
         Ok((Self { file, xref }, metadata))
     }
