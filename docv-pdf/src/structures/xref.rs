@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
-    document::DocumentHash,
     parser::{XrefObject, XrefTableSection, read_startxref, read_trailer, read_xref},
+    structures::Hash,
     types::{Dictionary, IndirectReference, Stream},
 };
 
@@ -22,6 +22,7 @@ pub struct Xref {
 #[derive(Debug, Clone)]
 pub enum XrefEntry {
     Free {
+        #[allow(dead_code)]
         next_id: usize,
     },
     Occupied {
@@ -35,7 +36,7 @@ pub enum XrefEntry {
 
 #[derive(Debug, Default, Clone)]
 pub struct XrefMetadata {
-    pub hash: Option<DocumentHash>,
+    pub hash: Option<Hash>,
     pub root_id: IndirectReference,
     pub info_id: Option<IndirectReference>,
 }
@@ -192,7 +193,7 @@ impl Xref {
                     .as_bytes()
                     .to_vec();
 
-                Ok(DocumentHash::from_data(initial, current))
+                Ok(Hash::from_data(initial, current))
             })
             .transpose()?;
 

@@ -5,20 +5,13 @@ use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     parser::read_object,
-    structures::{Info, Xref, XrefEntry},
+    structures::{Hash, Info, Xref, XrefEntry},
     types::{IndirectReference, Object},
 };
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct DocumentHash {
-    initial: Vec<u8>,
-    current: Vec<u8>,
-}
 
 #[derive(Debug)]
 pub struct Document {
@@ -27,13 +20,7 @@ pub struct Document {
     xref: Xref,
     info: Info,
 
-    hash: Option<DocumentHash>,
-}
-
-impl DocumentHash {
-    pub fn from_data(initial: Vec<u8>, current: Vec<u8>) -> Self {
-        Self { initial, current }
-    }
+    hash: Option<Hash>,
 }
 
 impl Document {

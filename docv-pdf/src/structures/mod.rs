@@ -1,6 +1,8 @@
+mod hash;
 mod info;
 mod xref;
 
+pub use hash::Hash;
 pub use info::{Info, Trap};
 pub use xref::{Xref, XrefEntry, XrefMetadata};
 
