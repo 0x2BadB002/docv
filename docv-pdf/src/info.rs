@@ -1,8 +1,7 @@
 use chrono::{DateTime, FixedOffset};
-use nom::Finish;
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 
-use crate::parser::indirect_object;
+use crate::types::Object;
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
@@ -31,14 +30,12 @@ pub enum Trap {
 }
 
 impl Info {
-    pub fn read(&mut self, input: &[u8], offset: usize) -> Result<()> {
-        let (_, info) = indirect_object(&input[offset..])
-            .finish()
-            .ok()
-            .context(error::ParseSnafu { offset })?;
-        let info = info.as_dictionary().context(error::NotDictionarySnafu)?;
+    pub fn populate_from_dictionary(&mut self, dictionary: Object) -> Result<()> {
+        let dictionary = dictionary
+            .as_dictionary()
+            .context(error::NotDictionarySnafu)?;
 
-        for (key, value) in info.records.iter() {
+        for (key, value) in dictionary.records.iter() {
             match key.as_str() {
                 "Title" => {
                     self.title = Some(

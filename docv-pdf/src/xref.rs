@@ -1,10 +1,10 @@
-use std::{collections::BTreeMap, vec::IntoIter};
+use std::collections::BTreeMap;
 
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     document::DocumentHash,
-    parser::{XrefObject, XrefTableSection, startxref, trailer, xref},
+    parser::{XrefObject, XrefTableSection, read_startxref, read_trailer, read_xref},
     types::{Dictionary, IndirectReference, Stream},
 };
 
@@ -64,7 +64,7 @@ impl Xref {
 
         let start = (filesize as usize) - offset;
         let (_, offset) =
-            startxref(&input[start..])
+            read_startxref(&input[start..])
                 .ok()
                 .with_context(|| error::ParseFileSnafu {
                     section: "startxref".to_string(),
@@ -77,7 +77,7 @@ impl Xref {
     fn read_table(&mut self, input: &[u8], offset: u64) -> Result<XrefMetadata> {
         let start = offset as usize;
         let (remained, data) =
-            xref(&input[start..])
+            read_xref(&input[start..])
                 .ok()
                 .with_context(|| error::ParseFileSnafu {
                     section: "xref".to_string(),
@@ -112,9 +112,9 @@ impl Xref {
         }
     }
 
-    fn parse_xref_table(&mut self, sections: IntoIter<XrefTableSection>) -> Result<()> {
-        for section in sections {
-            for (i, parsed_entry) in section.entries.enumerate() {
+    fn parse_xref_table(&mut self, sections: Vec<XrefTableSection>) -> Result<()> {
+        for section in sections.iter() {
+            for (i, parsed_entry) in section.entries.iter().enumerate() {
                 let entry = XrefEntry::Occupied {
                     offset: parsed_entry.offset,
                 };
@@ -130,10 +130,12 @@ impl Xref {
     }
 
     fn parse_trailer(&mut self, input: &[u8]) -> Result<XrefMetadata> {
-        let (_, trailer) = trailer(input).ok().with_context(|| error::ParseFileSnafu {
-            section: "trailer".to_string(),
-            offset: 0usize,
-        })?;
+        let (_, trailer) = read_trailer(input)
+            .ok()
+            .with_context(|| error::ParseFileSnafu {
+                section: "trailer".to_string(),
+                offset: 0usize,
+            })?;
 
         self.get_xref_data(&trailer)
     }

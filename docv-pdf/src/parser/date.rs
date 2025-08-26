@@ -23,7 +23,7 @@ use nom::{
 /// `Result` containing:
 /// - Remaining input after parsing
 /// - `DateTime<FixedOffset>` on success
-pub fn string_date(input: &str) -> Result<(&str, chrono::DateTime<FixedOffset>), Error<&str>> {
+pub fn read_date(input: &str) -> Result<(&str, chrono::DateTime<FixedOffset>), Error<&str>> {
     let (input, (date, offset)) = (date, opt(timezone)).parse(input).finish()?;
 
     let offset = offset.unwrap_or(FixedOffset::east_opt(0).unwrap());
@@ -258,7 +258,7 @@ mod tests {
         ];
 
         for case in &test_cases {
-            let result = string_date(case.input);
+            let result = read_date(case.input);
             assert_eq!(
                 result.is_ok(),
                 case.expected,

@@ -29,7 +29,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum XrefObject {
     /// Traditional cross-reference table format
-    Table(IntoIter<XrefTableSection>),
+    Table(Vec<XrefTableSection>),
     /// Compressed cross-reference stream object
     ObjectStream(Stream),
     /// Indirect object definition with compressed cross-reference stream object
@@ -44,7 +44,7 @@ pub enum XrefObject {
 pub struct XrefTableSection {
     pub first_id: usize,
     pub _length: usize,
-    pub entries: IntoIter<XrefTableEntry>,
+    pub entries: Vec<XrefTableEntry>,
 }
 
 /// Represents a single entry in a cross-reference table section.
@@ -79,7 +79,7 @@ pub struct XrefTableEntry {
 /// `IResult` containing:
 /// - Remaining input after parsing
 /// - Offset value on success
-pub fn startxref(input: &[u8]) -> Result<(&[u8], u64), Error<&[u8]>> {
+pub fn read_startxref(input: &[u8]) -> Result<(&[u8], u64), Error<&[u8]>> {
     let value = digit1.map_opt(|res: &[u8]| res.parse_to());
 
     preceded(
@@ -110,7 +110,7 @@ pub fn startxref(input: &[u8]) -> Result<(&[u8], u64), Error<&[u8]>> {
 /// `IResult` containing:
 /// - Remaining input after parsing
 /// - `Xref` enum variant representing either a table or object stream
-pub fn xref(input: &[u8]) -> Result<(&[u8], XrefObject), Error<&[u8]>> {
+pub fn read_xref(input: &[u8]) -> Result<(&[u8], XrefObject), Error<&[u8]>> {
     alt((
         xref_table.map(XrefObject::Table),
         stream.map(XrefObject::ObjectStream),
@@ -142,7 +142,7 @@ pub fn xref(input: &[u8]) -> Result<(&[u8], XrefObject), Error<&[u8]>> {
 /// `IResult` containing:
 /// - Remaining input after parsing
 /// - Dictionary containing trailer information
-pub fn trailer(input: &[u8]) -> Result<(&[u8], Dictionary), Error<&[u8]>> {
+pub fn read_trailer(input: &[u8]) -> Result<(&[u8], Dictionary), Error<&[u8]>> {
     let trailer = delimited(
         many0(alt((whitespace, eol, comment))),
         tag("trailer"),
@@ -175,7 +175,7 @@ pub fn trailer(input: &[u8]) -> Result<(&[u8], Dictionary), Error<&[u8]>> {
 /// `IResult` containing:
 /// - Remaining input after parsing
 /// - Iterator over cross-reference table sections
-fn xref_table(input: &[u8]) -> IResult<&[u8], IntoIter<XrefTableSection>> {
+fn xref_table(input: &[u8]) -> IResult<&[u8], Vec<XrefTableSection>> {
     let entry = (
         take(10usize).map_opt(|res: &[u8]| res.parse_to()),
         value((), tag(" ")),
@@ -205,12 +205,10 @@ fn xref_table(input: &[u8]) -> IResult<&[u8], IntoIter<XrefTableSection>> {
         .map(|((first_id, length), entries)| XrefTableSection {
             first_id,
             _length: length,
-            entries: entries.into_iter(),
+            entries,
         });
 
-    preceded((tag("xref"), eol), many0(subsection))
-        .map(|res| res.into_iter())
-        .parse(input)
+    preceded((tag("xref"), eol), many0(subsection)).parse(input)
 }
 
 #[cfg(test)]
@@ -278,7 +276,7 @@ mod tests {
         ];
 
         for case in &test_cases {
-            let result = startxref(case.input);
+            let result = read_startxref(case.input);
             assert_eq!(
                 result.is_ok(),
                 case.expected,
@@ -359,7 +357,7 @@ mod tests {
         ];
 
         for case in &test_cases {
-            let result = xref(case.input);
+            let result = read_xref(case.input);
             assert_eq!(
                 result.is_ok(),
                 case.expected,
@@ -372,11 +370,10 @@ mod tests {
                 let (actual_remainder, actual_xref) = result.unwrap();
 
                 if let XrefObject::Table(sections) = actual_xref {
-                    let sections: Vec<_> = sections.collect();
                     let total_entries: Vec<XrefTableEntry> = sections
                         .clone()
                         .into_iter()
-                        .flat_map(|section| section.entries.collect::<Vec<_>>())
+                        .flat_map(|section| section.entries)
                         .collect();
 
                     assert_eq!(
@@ -505,7 +502,7 @@ mod tests {
         ];
 
         for case in &test_cases {
-            let result = trailer(case.input);
+            let result = read_trailer(case.input);
             assert_eq!(
                 result.is_ok(),
                 case.expected,

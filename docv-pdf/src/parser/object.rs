@@ -1,4 +1,4 @@
-use nom::{IResult, Parser, branch::alt};
+use nom::{Finish, IResult, Parser, branch::alt, error::Error};
 
 use crate::{
     parser::{
@@ -14,6 +14,30 @@ use crate::{
     },
     types::Object,
 };
+
+/// Parses a PDF object from the input.
+///
+/// Attempts to parse any of the fundamental PDF object types:
+/// - Boolean (`true`/`false`)
+/// - Numeric (integer or real)
+/// - String (literal or hexadecimal)
+/// - Name (e.g., `/Foo`)
+/// - Null (`null`)
+/// - Array (e.g., `[1 2 /Three]`)
+/// - Dictionary (e.g., `<< \type \XRef >>`)
+/// - Stream (e.g., `<< \type \XObject \Length 10 >>stream ... endstream`)
+/// - Indirect Objects (e.g., 1 0 obj ... endobj)
+///
+/// # Arguments
+/// * `input` - Byte slice to parse
+///
+/// # Returns
+/// `IResult` containing remaining input and parsed [`Object`] on success
+pub fn read_object(input: &[u8]) -> Result<Object, Error<&[u8]>> {
+    let (_, object) = object(input).finish()?;
+
+    Ok(object)
+}
 
 /// Parses a PDF object from the input.
 ///
