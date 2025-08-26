@@ -9,16 +9,16 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Default)]
 pub struct Info {
-    title: Option<String>,
-    author: Option<String>,
-    subject: Option<String>,
-    keywords: Option<String>,
-    creator: Option<String>,
-    producer: Option<String>,
-    creation_date: Option<DateTime<FixedOffset>>,
-    mod_date: Option<DateTime<FixedOffset>>,
-    trapped: Trap,
-    other: Vec<(String, String)>,
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub subject: Option<String>,
+    pub keywords: Option<String>,
+    pub creator: Option<String>,
+    pub producer: Option<String>,
+    pub creation_date: Option<DateTime<FixedOffset>>,
+    pub mod_date: Option<DateTime<FixedOffset>>,
+    pub trapped: Trap,
+    pub other: Vec<(String, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -147,42 +147,6 @@ impl Info {
         }
 
         Ok(())
-    }
-
-    pub fn title(&self) -> Option<&String> {
-        self.title.as_ref()
-    }
-
-    pub fn author(&self) -> Option<&String> {
-        self.author.as_ref()
-    }
-
-    pub fn subject(&self) -> Option<&String> {
-        self.subject.as_ref()
-    }
-
-    pub fn keywords(&self) -> Option<&String> {
-        self.keywords.as_ref()
-    }
-
-    pub fn creator(&self) -> Option<&String> {
-        self.creator.as_ref()
-    }
-
-    pub fn producer(&self) -> Option<&String> {
-        self.producer.as_ref()
-    }
-
-    pub fn creation_date(&self) -> Option<DateTime<FixedOffset>> {
-        self.creation_date
-    }
-
-    pub fn mod_date(&self) -> Option<DateTime<FixedOffset>> {
-        self.mod_date
-    }
-
-    pub fn trapped(&self) -> &Trap {
-        &self.trapped
     }
 }
 
