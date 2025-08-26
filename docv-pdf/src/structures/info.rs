@@ -30,19 +30,19 @@ pub enum Trap {
 }
 
 impl Info {
-    pub fn populate_from_dictionary(&mut self, dictionary: Object) -> Result<()> {
-        if dictionary.is_null() {
-            return Ok(());
+    pub fn from_object(object: Object) -> Result<Self> {
+        let mut result = Self::default();
+
+        if object.is_null() {
+            return Ok(result);
         }
 
-        let dictionary = dictionary
-            .as_dictionary()
-            .context(error::NotDictionarySnafu)?;
+        let dictionary = object.as_dictionary().context(error::NotDictionarySnafu)?;
 
         for (key, value) in dictionary.records.iter() {
             match key.as_str() {
                 "Title" => {
-                    self.title = Some(
+                    result.title = Some(
                         value
                             .as_string()
                             .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
@@ -52,7 +52,7 @@ impl Info {
                     )
                 }
                 "Author" => {
-                    self.author = Some(
+                    result.author = Some(
                         value
                             .as_string()
                             .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
@@ -62,7 +62,7 @@ impl Info {
                     )
                 }
                 "Subject" => {
-                    self.subject = Some(
+                    result.subject = Some(
                         value
                             .as_string()
                             .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
@@ -72,7 +72,7 @@ impl Info {
                     )
                 }
                 "Keywords" => {
-                    self.keywords = Some(
+                    result.keywords = Some(
                         value
                             .as_string()
                             .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
@@ -82,7 +82,7 @@ impl Info {
                     )
                 }
                 "Creator" => {
-                    self.creator = Some(
+                    result.creator = Some(
                         value
                             .as_string()
                             .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
@@ -92,7 +92,7 @@ impl Info {
                     )
                 }
                 "Producer" => {
-                    self.producer = Some(
+                    result.producer = Some(
                         value
                             .as_string()
                             .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
@@ -102,7 +102,7 @@ impl Info {
                     )
                 }
                 "CreationDate" => {
-                    self.creation_date = Some(
+                    result.creation_date = Some(
                         value
                             .as_string()
                             .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
@@ -111,7 +111,7 @@ impl Info {
                     )
                 }
                 "ModDate" => {
-                    self.mod_date = Some(
+                    result.mod_date = Some(
                         value
                             .as_string()
                             .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
@@ -126,7 +126,7 @@ impl Info {
                         .as_str()
                         .context(error::PdfStringSnafu)?;
 
-                    self.trapped = match value {
+                    result.trapped = match value {
                         "True" => Trap::True,
                         "False" => Trap::False,
                         "Unknown" => Trap::Unknown,
@@ -138,7 +138,7 @@ impl Info {
                         }
                     }
                 }
-                _ => self.other.push((
+                _ => result.other.push((
                     key.to_string(),
                     value
                         .as_string()
@@ -150,7 +150,7 @@ impl Info {
             }
         }
 
-        Ok(())
+        Ok(result)
     }
 }
 
@@ -160,9 +160,6 @@ mod error {
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub(super)))]
     pub(super) enum Error {
-        #[snafu(display("Failed to parse info object. Error at offset {offset}"))]
-        Parse { offset: usize },
-
         #[snafu(display("Parsed object is not dictionary"))]
         NotDictionary { source: crate::types::ObjectError },
 

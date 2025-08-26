@@ -42,7 +42,7 @@ pub struct XrefMetadata {
 }
 
 impl Xref {
-    pub fn read(&mut self, input: &[u8], filesize: u64) -> Result<XrefMetadata> {
+    pub fn read(&mut self, input: &[u8], filesize: usize) -> Result<XrefMetadata> {
         let offset = self.read_startxref(input, filesize)?;
         self.read_table(input, offset)
     }
@@ -61,7 +61,7 @@ impl Xref {
         self.prev.is_some()
     }
 
-    pub fn read_startxref(&mut self, input: &[u8], filesize: u64) -> Result<u64> {
+    pub fn read_startxref(&mut self, input: &[u8], filesize: usize) -> Result<u64> {
         let offset = ((filesize as f64).log10().floor() + 1.0) as usize + 23;
 
         let start = (filesize as usize) - offset;

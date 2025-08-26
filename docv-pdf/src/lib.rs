@@ -1,4 +1,5 @@
 mod document;
+mod objects;
 mod parser;
 mod structures;
 mod types;
