@@ -95,19 +95,19 @@ impl Xref {
             XrefObject::ObjectStream(mut stream) => {
                 stream
                     .process_filters()
-                    .context(error::InvalidStreamSnafu)?;
+                    .context(error::StreamProcessingSnafu)?;
 
                 self.parse_xref_stream(stream)
             }
             XrefObject::IndirectObjectStream(indirect_object) => {
                 let mut stream = indirect_object
                     .as_stream()
-                    .with_context(|_| error::InvalidObjectStreamSnafu)?
+                    .with_context(|_| error::InvalidStreamSnafu)?
                     .clone();
 
                 stream
                     .process_filters()
-                    .context(error::InvalidStreamSnafu)?;
+                    .context(error::StreamProcessingSnafu)?;
 
                 self.parse_xref_stream(stream)
             }
@@ -169,32 +169,7 @@ impl Xref {
 
         let file_hash = data
             .get("ID")
-            .map(|object| {
-                let array = object
-                    .as_array()
-                    .with_context(|_| error::InvalidFieldSnafu {
-                        field: "ID".to_string(),
-                    })?;
-                if array.len() != 2 {
-                    return Err(error::Error::InvalidXrefIDSize { size: array.len() });
-                }
-                let initial = array[0]
-                    .as_string()
-                    .with_context(|_| error::InvalidFieldSnafu {
-                        field: "ID".to_string(),
-                    })?
-                    .as_bytes()
-                    .to_vec();
-                let current = array[1]
-                    .as_string()
-                    .with_context(|_| error::InvalidFieldSnafu {
-                        field: "ID".to_string(),
-                    })?
-                    .as_bytes()
-                    .to_vec();
-
-                Ok(Hash::from_data(initial, current))
-            })
+            .map(|object| Hash::from_object(object).context(error::InvalidHashSnafu))
             .transpose()?;
 
         let root_id = data
@@ -364,6 +339,12 @@ mod error {
         #[snafu(display("Xref has no prev instances"))]
         NoPrevXref,
 
+        #[snafu(display("Invalid object stream provided"))]
+        InvalidStream { source: crate::types::ObjectError },
+
+        #[snafu(display("Error during stream processing"))]
+        StreamProcessing { source: crate::types::StreamError },
+
         #[snafu(display("Xref field `{field}` not found"))]
         FieldNotFound { field: String },
 
@@ -373,11 +354,10 @@ mod error {
             source: crate::types::ObjectError,
         },
 
-        #[snafu(display("Invalid object stream provided"))]
-        InvalidObjectStream { source: crate::types::ObjectError },
-
-        #[snafu(display("Invalid Xref `ID` array size. Expected = 2, Got = {size}"))]
-        InvalidXrefIDSize { size: usize },
+        #[snafu(display("Wrong field ID hash data format"))]
+        InvalidHash {
+            source: crate::structures::HashError,
+        },
 
         #[snafu(display("Invalid Xref Stream `W` array size. Expected = 3, Got = {size}"))]
         InvalidXrefStreamWSize { size: usize },
@@ -386,8 +366,5 @@ mod error {
             "Invalid Xref Stream entry type within binary data. Expected one of [0, 1, 2], Got = {entry_type}"
         ))]
         InvalidXrefStreamEntryType { entry_type: usize },
-
-        #[snafu(display("Error during stream processing"))]
-        InvalidStream { source: crate::types::StreamError },
     }
 }
