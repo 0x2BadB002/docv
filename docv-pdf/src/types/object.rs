@@ -2,7 +2,9 @@ use core::str;
 
 use snafu::{OptionExt, Snafu};
 
-use crate::types::{Dictionary, IndirectObject, IndirectReference, Numeric, PdfString, Stream};
+use crate::types::{
+    Array, Dictionary, IndirectObject, IndirectReference, Numeric, PdfString, Stream,
+};
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
@@ -28,7 +30,6 @@ type Result<T> = std::result::Result<T, Error>;
 /// - Indirect: Object references and definitions for cross-referencing
 ///
 /// # Examples
-/// ```
 /// true                        // Boolean
 /// 42                         // Numeric (Integer)
 /// 3.14                       // Numeric (Real)
@@ -40,7 +41,6 @@ type Result<T> = std::result::Result<T, Error>;
 /// << /Key /Value >>          // Dictionary
 /// 1 0 obj << /Length 10 >> stream ... endstream // Stream
 /// 1 0 R                      // Indirect Reference
-/// ```
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     /// A boolean value (true/false literal)
@@ -54,7 +54,7 @@ pub enum Object {
     /// Null object represented by the 'null' literal
     Null,
     /// Array object, contains 0 or more Objects
-    Array(Vec<Object>),
+    Array(Array),
     /// Dictionary object, contains key-value pairs
     Dictionary(Dictionary),
     /// Stream object, contains key-value pairs and raw byte data
@@ -183,7 +183,7 @@ impl Object {
     /// let value = array_obj.as_array().unwrap();
     /// assert_eq!(value, &[Object::Null]);
     /// ```
-    pub fn as_array(&self) -> Result<&[Object]> {
+    pub fn as_array(&self) -> Result<&Array> {
         match self {
             Object::Array(data) => Ok(data),
             _ => Err(error::Error::UnexpectedObjectType {

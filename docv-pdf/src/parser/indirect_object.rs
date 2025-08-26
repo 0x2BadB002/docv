@@ -129,11 +129,14 @@ mod tests {
                 expected: true,
                 expected_id: Some(4),
                 expected_gen_id: Some(0),
-                expected_object: Some(Object::Array(vec![
-                    Object::Numeric(Numeric::Integer(1)),
-                    Object::Numeric(Numeric::Integer(2)),
-                    Object::Numeric(Numeric::Integer(3)),
-                ])),
+                expected_object: Some(Object::Array(
+                    vec![
+                        Object::Numeric(Numeric::Integer(1)),
+                        Object::Numeric(Numeric::Integer(2)),
+                        Object::Numeric(Numeric::Integer(3)),
+                    ]
+                    .into(),
+                )),
                 expected_remainder: Some(b""),
             },
             TestCase {

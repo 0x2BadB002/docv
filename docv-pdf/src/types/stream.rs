@@ -239,18 +239,24 @@ mod tests {
                 description: "Invalid single filter",
             },
             TestCase {
-                input: Object::Array(vec![
-                    Object::Name("FlateDecode".to_string()),
-                    Object::Name("FlateDecode".to_string()),
-                ]),
+                input: Object::Array(
+                    vec![
+                        Object::Name("FlateDecode".to_string()),
+                        Object::Name("FlateDecode".to_string()),
+                    ]
+                    .into(),
+                ),
                 expected_ok: true,
                 description: "Valid filter pipeline",
             },
             TestCase {
-                input: Object::Array(vec![
-                    Object::Name("InvalidFilter".to_string()),
-                    Object::Name("FlateDecode".to_string()),
-                ]),
+                input: Object::Array(
+                    vec![
+                        Object::Name("InvalidFilter".to_string()),
+                        Object::Name("FlateDecode".to_string()),
+                    ]
+                    .into(),
+                ),
                 expected_ok: false,
                 description: "Pipeline with invalid filter",
             },

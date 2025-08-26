@@ -60,7 +60,6 @@ pub fn dictionary(input: &[u8]) -> IResult<&[u8], Dictionary> {
 mod tests {
     use super::*;
     use crate::types::{Numeric, Object, PdfString};
-    use std::collections::BTreeMap;
 
     #[test]
     fn test_dictionary_parser() {
@@ -79,92 +78,81 @@ mod tests {
                 name: "valid empty dictionary",
                 input: b"<<>>",
                 expected: true,
-                expected_result: Some(Dictionary {
-                    records: BTreeMap::new(),
-                }),
+                expected_result: Some(Dictionary::from([])),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid dictionary with one key-value pair",
                 input: b"<< /Key 42 >>",
                 expected: true,
-                expected_result: Some(Dictionary {
-                    records: BTreeMap::from([(
-                        "Key".to_string(),
-                        Object::Numeric(Numeric::Integer(42)),
-                    )]),
-                }),
+                expected_result: Some(Dictionary::from([(
+                    "Key".to_string(),
+                    Object::Numeric(Numeric::Integer(42)),
+                )])),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid dictionary with multiple key-value pairs",
                 input: b"<< /Key1 1 /Key2 (two) /Key3 /three >>",
                 expected: true,
-                expected_result: Some(Dictionary {
-                    records: BTreeMap::from([
-                        ("Key1".to_string(), Object::Numeric(Numeric::Integer(1))),
-                        (
-                            "Key2".to_string(),
-                            Object::String(PdfString::Literal("two".to_string())),
-                        ),
-                        ("Key3".to_string(), Object::Name("three".to_string())),
-                    ]),
-                }),
+                expected_result: Some(Dictionary::from([
+                    ("Key1".to_string(), Object::Numeric(Numeric::Integer(1))),
+                    (
+                        "Key2".to_string(),
+                        Object::String(PdfString::Literal("two".to_string())),
+                    ),
+                    ("Key3".to_string(), Object::Name("three".to_string())),
+                ])),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid dictionary with comments and whitespace",
                 input: b"<< % comment\n /Key1 1 % another\n /Key2 (two) \t /Key3 /three \n>>",
                 expected: true,
-                expected_result: Some(Dictionary {
-                    records: BTreeMap::from([
-                        ("Key1".to_string(), Object::Numeric(Numeric::Integer(1))),
-                        (
-                            "Key2".to_string(),
-                            Object::String(PdfString::Literal("two".to_string())),
-                        ),
-                        ("Key3".to_string(), Object::Name("three".to_string())),
-                    ]),
-                }),
+                expected_result: Some(Dictionary::from([
+                    ("Key1".to_string(), Object::Numeric(Numeric::Integer(1))),
+                    (
+                        "Key2".to_string(),
+                        Object::String(PdfString::Literal("two".to_string())),
+                    ),
+                    ("Key3".to_string(), Object::Name("three".to_string())),
+                ])),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid dictionary with nested structures",
                 input: b"<< /Array [1 2 3] /Nested << /SubKey true >> >>",
                 expected: true,
-                expected_result: Some(Dictionary {
-                    records: BTreeMap::from([
-                        (
-                            "Array".to_string(),
-                            Object::Array(vec![
+                expected_result: Some(Dictionary::from([
+                    (
+                        "Array".to_string(),
+                        Object::Array(
+                            vec![
                                 Object::Numeric(Numeric::Integer(1)),
                                 Object::Numeric(Numeric::Integer(2)),
                                 Object::Numeric(Numeric::Integer(3)),
-                            ]),
+                            ]
+                            .into(),
                         ),
-                        (
-                            "Nested".to_string(),
-                            Object::Dictionary(Dictionary {
-                                records: BTreeMap::from([(
-                                    "SubKey".to_string(),
-                                    Object::Boolean(true),
-                                )]),
-                            }),
-                        ),
-                    ]),
-                }),
+                    ),
+                    (
+                        "Nested".to_string(),
+                        Object::Dictionary(Dictionary::from([(
+                            "SubKey".to_string(),
+                            Object::Boolean(true),
+                        )])),
+                    ),
+                ])),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "dictionary with remainder",
                 input: b"<< /Key 42 >>rest",
                 expected: true,
-                expected_result: Some(Dictionary {
-                    records: BTreeMap::from([(
-                        "Key".to_string(),
-                        Object::Numeric(Numeric::Integer(42)),
-                    )]),
-                }),
+                expected_result: Some(Dictionary::from([(
+                    "Key".to_string(),
+                    Object::Numeric(Numeric::Integer(42)),
+                )])),
                 expected_remainder: Some(b"rest"),
             },
             TestCase {
