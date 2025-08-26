@@ -58,11 +58,19 @@ pub enum PdfString {
 impl PdfString {
     pub fn as_str(&self) -> Result<&str> {
         match self {
-            PdfString::Literal(data) => Ok(data.as_str()),
+            PdfString::Literal(data) => {
+                let mut data = data.as_str();
+
+                data = data.trim_start_matches("\u{FEFF}");
+
+                Ok(data)
+            }
             PdfString::Hexadecimal(data) => {
-                let data = str::from_utf8(data).with_context(|_| error::EncodingStrSnafu {
+                let mut data = str::from_utf8(data).with_context(|_| error::EncodingStrSnafu {
                     data: data.to_vec(),
                 })?;
+
+                data = data.trim_start_matches("\u{FEFF}");
 
                 Ok(data)
             }
@@ -77,7 +85,7 @@ impl PdfString {
     }
 
     pub fn to_date(&self) -> Result<DateTime<FixedOffset>> {
-        let input = &self.as_str()?;
+        let input = self.as_str()?;
         let (_, date) = string_date(input)
             .ok()
             .with_context(|| error::ParseToSnafu {
