@@ -208,6 +208,11 @@ impl Object {
     pub fn as_dictionary(&self) -> Result<&Dictionary> {
         match self {
             Object::Dictionary(data) => Ok(data),
+            Object::IndirectDefinition(data) => {
+                let data = data.as_dictionary()?;
+
+                Ok(data)
+            }
             _ => Err(error::Error::UnexpectedObjectType {
                 expected: "Dictionary".to_string(),
                 got: self.clone(),
