@@ -2,7 +2,7 @@ use chrono::{DateTime, FixedOffset};
 use nom::Finish;
 use snafu::{OptionExt, ResultExt, Snafu};
 
-use crate::parser::dictionary;
+use crate::parser::indirect_object;
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
@@ -32,10 +32,11 @@ pub enum Trap {
 
 impl Info {
     pub fn read(&mut self, input: &[u8], offset: usize) -> Result<()> {
-        let (_, info) = dictionary(&input[offset..])
+        let (_, info) = indirect_object(&input[offset..])
             .finish()
             .ok()
             .context(error::ParseSnafu { offset })?;
+        let info = info.as_dictionary().context(error::NotDictionarySnafu)?;
 
         for (key, value) in info.records.iter() {
             match key.as_str() {
@@ -117,6 +118,25 @@ impl Info {
                             .context(error::PdfStringSnafu)?,
                     )
                 }
+                "Trapped" => {
+                    let value = value
+                        .as_string()
+                        .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                        .as_str()
+                        .context(error::PdfStringSnafu)?;
+
+                    self.trapped = match value {
+                        "True" => Trap::True,
+                        "False" => Trap::False,
+                        "Unknown" => Trap::Unknown,
+                        _ => {
+                            return Err(error::Error::UnexpectedTrapValue {
+                                value: value.to_string(),
+                            }
+                            .into());
+                        }
+                    }
+                }
                 _ => self.other.push((
                     key.to_string(),
                     value
@@ -178,11 +198,17 @@ mod error {
         #[snafu(display("Failed to parse info object. Error at offset {offset}"))]
         Parse { offset: usize },
 
+        #[snafu(display("Parsed object is not dictionary"))]
+        NotDictionary { source: crate::types::ObjectError },
+
         #[snafu(display("Wrong field {field} data format"))]
         InvalidField {
             field: String,
             source: crate::types::ObjectError,
         },
+
+        #[snafu(display("Unexpected Trapping value encountered. Value = {value}"))]
+        UnexpectedTrapValue { value: String },
 
         #[snafu(display("Error while working with pdf string"))]
         PdfString { source: crate::types::StringError },

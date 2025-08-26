@@ -13,5 +13,5 @@ mod string;
 mod whitespace;
 
 pub use date::string_date;
-pub use dictionary::dictionary;
 pub use file::{XrefObject, XrefTableSection, startxref, trailer, xref};
+pub use indirect_object::indirect_object;
