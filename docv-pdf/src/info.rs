@@ -31,6 +31,10 @@ pub enum Trap {
 
 impl Info {
     pub fn populate_from_dictionary(&mut self, dictionary: Object) -> Result<()> {
+        if dictionary.is_null() {
+            return Ok(());
+        }
+
         let dictionary = dictionary
             .as_dictionary()
             .context(error::NotDictionarySnafu)?;
