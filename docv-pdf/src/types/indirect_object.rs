@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::{fmt::Display, ops::Deref, sync::Arc};
 
 use crate::types::object::Object;
 
@@ -55,5 +55,11 @@ impl Deref for IndirectObject {
 
     fn deref(&self) -> &Self::Target {
         &self.object
+    }
+}
+
+impl Display for IndirectReference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} R", self.id, self.gen_id)
     }
 }
