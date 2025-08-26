@@ -1,7 +1,7 @@
 use chrono::{DateTime, FixedOffset};
 use snafu::{OptionExt, ResultExt, Snafu};
 
-use crate::parser::string_date;
+use crate::parser::read_date;
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
@@ -86,12 +86,10 @@ impl PdfString {
 
     pub fn to_date(&self) -> Result<DateTime<FixedOffset>> {
         let input = self.as_str()?;
-        let (_, date) = string_date(input)
-            .ok()
-            .with_context(|| error::ParseToSnafu {
-                data: input.to_string(),
-                target: "date",
-            })?;
+        let (_, date) = read_date(input).ok().with_context(|| error::ParseToSnafu {
+            data: input.to_string(),
+            target: "date",
+        })?;
 
         Ok(date)
     }

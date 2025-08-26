@@ -12,6 +12,6 @@ mod stream;
 mod string;
 mod whitespace;
 
-pub use date::string_date;
-pub use file::{XrefObject, XrefTableSection, startxref, trailer, xref};
-pub use indirect_object::indirect_object;
+pub use date::read_date;
+pub use file::{XrefObject, XrefTableSection, read_startxref, read_trailer, read_xref};
+pub use object::read_object;
