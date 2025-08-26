@@ -14,9 +14,9 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Default, Clone)]
 pub struct Xref {
-    entries: BTreeMap<IndirectReference, XrefEntry>,
-    size: usize,
     prev: Option<u64>,
+    size: usize,
+    entries: BTreeMap<IndirectReference, XrefEntry>,
 }
 
 #[derive(Debug, Clone)]
@@ -36,7 +36,6 @@ pub enum XrefEntry {
 #[derive(Debug, Default, Clone)]
 pub struct XrefMetadata {
     pub hash: Option<DocumentHash>,
-
     pub root_id: IndirectReference,
     pub info_id: Option<IndirectReference>,
 }
@@ -52,11 +51,13 @@ impl Xref {
     }
 
     pub fn read_prev_table(&mut self, input: &[u8]) -> Result<()> {
-        if self.prev.is_some() {
-            self.read_table(input, self.prev.unwrap())?;
-        }
+        self.read_table(input, self.prev.context(error::NoPrevXrefSnafu)?)?;
 
         Ok(())
+    }
+
+    pub fn has_prev_table(&self) -> bool {
+        self.prev.is_some()
     }
 
     pub fn read_startxref(&mut self, input: &[u8], filesize: u64) -> Result<u64> {
@@ -358,6 +359,9 @@ mod error {
     pub(super) enum Error {
         #[snafu(display("Failed to parse section {section}. Error at offset {offset}"))]
         ParseFile { section: String, offset: usize },
+
+        #[snafu(display("Xref has no prev instances"))]
+        NoPrevXref,
 
         #[snafu(display("Xref field `{field}` not found"))]
         FieldNotFound { field: String },

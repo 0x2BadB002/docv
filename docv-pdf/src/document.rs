@@ -5,6 +5,8 @@ use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     info::Info,
+    parser::read_object,
+    types::{IndirectReference, Object},
     xref::{Xref, XrefEntry},
 };
 
@@ -69,26 +71,47 @@ impl Document {
 
         self.hash = metadata.hash;
         if metadata.info_id.is_some() {
-            let ref_id = metadata.info_id.as_ref().unwrap();
-            let entry =
-                self.xref
-                    .find_entry(ref_id)
-                    .with_context(|| error::EntryNotFoundSnafu {
-                        object: ref_id.clone(),
-                    })?;
+            let info_id = metadata.info_id.as_ref().unwrap();
 
-            match entry {
-                XrefEntry::Free { .. } => {}
-                XrefEntry::Occupied { offset } => {
-                    self.info
-                        .read(&self.file, *offset)
-                        .context(error::ReadInfoSnafu)?;
-                }
-                XrefEntry::OccupiedCompressed { .. } => {}
-            }
+            let info_object = self.get_object(info_id)?;
+
+            self.info
+                .populate_from_dictionary(info_object)
+                .context(error::PopulateInfoSnafu)?;
         }
 
         Ok(())
+    }
+
+    fn get_object(&mut self, object_reference: &IndirectReference) -> Result<Object> {
+        let mut entry = self.xref.find_entry(object_reference);
+
+        while entry.is_none() && self.xref.has_prev_table() {
+            self.xref
+                .read_prev_table(&self.file)
+                .context(error::ReadXrefSnafu)?;
+
+            entry = self.xref.find_entry(object_reference);
+        }
+
+        let entry = entry.with_context(|| error::EntryNotFoundSnafu {
+            object: object_reference.clone(),
+        })?;
+
+        match entry {
+            XrefEntry::Free { .. } => Err(error::Error::EntryIsFree {
+                object: object_reference.clone(),
+            }
+            .into()),
+            XrefEntry::Occupied { offset } => {
+                let object = read_object(&self.file[(*offset)..])
+                    .ok()
+                    .context(error::ReadEntrySnafu)?;
+
+                Ok(object)
+            }
+            XrefEntry::OccupiedCompressed { .. } => Ok(Object::Null),
+        }
     }
 }
 
@@ -123,11 +146,17 @@ mod error {
         #[snafu(display("Failed to read xref table"))]
         ReadXref { source: crate::xref::Error },
 
-        #[snafu(display("Failed to read info dictionary"))]
-        ReadInfo { source: crate::info::Error },
+        #[snafu(display("Failed to populate info dictionary"))]
+        PopulateInfo { source: crate::info::Error },
 
-        #[snafu(display("Failed to find offset for indirect object {object:?}"))]
+        #[snafu(display("Failed to read info dictionary"))]
+        ReadEntry,
+
+        #[snafu(display("Failed to find indirect object {object:?}"))]
         EntryNotFound { object: IndirectReference },
+
+        #[snafu(display("Entry for indirect object {object:?} is free"))]
+        EntryIsFree { object: IndirectReference },
     }
 }
 
