@@ -1,4 +1,4 @@
-use std::{fmt::format, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use iced::{
     Alignment, Element, Length, Subscription, Task, Theme,

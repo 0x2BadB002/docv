@@ -1,6 +1,6 @@
 use core::str;
 
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{OptionExt, Snafu};
 
 use crate::types::{Dictionary, IndirectObject, IndirectReference, Numeric, PdfString, Stream};
 
@@ -199,6 +199,17 @@ impl Object {
             Object::String(data) => Ok(data),
             _ => Err(error::Error::UnexpectedObjectType {
                 expected: "String".to_string(),
+                got: self.clone(),
+            }
+            .into()),
+        }
+    }
+
+    pub fn as_dictionary(&self) -> Result<&Dictionary> {
+        match self {
+            Object::Dictionary(data) => Ok(data),
+            _ => Err(error::Error::UnexpectedObjectType {
+                expected: "Dictionary".to_string(),
                 got: self.clone(),
             }
             .into()),

@@ -37,7 +37,7 @@ use crate::{
 /// # Returns
 /// `IResult` containing:
 /// - Remaining input after parsing
-/// - Iterator over `DictionaryRecord` key-value pairs on success
+/// - Dictionary key-value pairs on success
 pub fn dictionary(input: &[u8]) -> IResult<&[u8], Dictionary> {
     let key_value = (
         name,
@@ -174,6 +174,41 @@ mod tests {
                 expected_result: Some(Dictionary::from([
                     ("Type".to_string(), Object::Name(String::from("XRef"))),
                     ("Size".to_string(), Object::Numeric(Numeric::Integer(139))),
+                ])),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "partial info dictionary",
+                input: b"<<
+                    % XML Metadata
+                    /CreationDate (D:20211230134641+11'00')
+                    /Creator      (By hand)
+                    /ModDate      (D:20211230134824+11'00')
+                    /Producer     (By hand)
+                    /Subject      (test file)
+                    >>",
+                expected: true,
+                expected_result: Some(Dictionary::from([
+                    (
+                        "CreationDate".to_string(),
+                        Object::String(PdfString::Literal("D:20211230134641+11'00'".to_string())),
+                    ),
+                    (
+                        "Creator".to_string(),
+                        Object::String(PdfString::Literal("By hand".to_string())),
+                    ),
+                    (
+                        "ModDate".to_string(),
+                        Object::String(PdfString::Literal("D:20211230134824+11'00'".to_string())),
+                    ),
+                    (
+                        "Producer".to_string(),
+                        Object::String(PdfString::Literal("By hand".to_string())),
+                    ),
+                    (
+                        "Subject".to_string(),
+                        Object::String(PdfString::Literal("test file".to_string())),
+                    ),
                 ])),
                 expected_remainder: Some(b""),
             },
