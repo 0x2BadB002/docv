@@ -19,8 +19,7 @@ pub struct ObjectStream {
 
 #[derive(Debug)]
 struct Entry {
-    #[allow(dead_code)]
-    id: usize,
+    _id: usize,
     offset: usize,
 }
 
@@ -67,7 +66,7 @@ impl ObjectStream {
             .context(error::ParseIdsSnafu)?
             .iter()
             .map(|(id, offset)| Entry {
-                id: *id,
+                _id: *id,
                 offset: *offset,
             })
             .collect::<Vec<_>>();
