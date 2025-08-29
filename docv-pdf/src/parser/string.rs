@@ -70,10 +70,21 @@ fn literal_string(input: &[u8]) -> IResult<&[u8], PdfString> {
     });
 
     delimited(tag("("), final_str, tag(")"))
-        .map_res(|data| -> Result<PdfString, std::string::FromUtf8Error> {
-            let data = String::from_utf8(data)?;
+        .map(|mut data: Vec<u8>| {
+            if data.starts_with(&[0xfe, 0xff]) {
+                if data.len() % 2 != 0 {
+                    data.push(0);
+                }
 
-            Ok(PdfString::Literal(data))
+                let data = data
+                    .chunks_exact(2)
+                    .map(|chunk: &[u8]| ((chunk[0] as u16) << 8 | (chunk[1] as u16)))
+                    .collect::<Vec<u16>>();
+
+                return PdfString::Literal(String::from_utf16_lossy(&data));
+            }
+
+            PdfString::Literal(String::from_utf8_lossy(&data).to_string())
         })
         .parse(input)
 }
