@@ -51,9 +51,9 @@ impl Objects {
     pub fn get_object(&mut self, object_reference: &IndirectReference) -> Result<Object> {
         let mut entry = self.xref.find_entry(object_reference);
 
-        while entry.is_none() && self.xref.has_prev_table() {
+        while entry.is_none() && self.xref.has_more_tables() {
             self.xref
-                .read_prev_table(&self.file)
+                .read_additional_table(&self.file)
                 .context(error::ReadXrefSnafu)?;
 
             entry = self.xref.find_entry(object_reference);

@@ -15,6 +15,7 @@ type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Default, Clone)]
 pub struct Xref {
     prev: Option<u64>,
+    xref_stm: Option<u64>,
     size: usize,
     entries: BTreeMap<IndirectReference, XrefEntry>,
 }
@@ -46,8 +47,8 @@ impl Xref {
         self.entries.get(ref_id)
     }
 
-    pub fn has_prev_table(&self) -> bool {
-        self.prev.is_some()
+    pub fn has_more_tables(&self) -> bool {
+        self.xref_stm.is_some() || self.prev.is_some()
     }
 
     pub fn read_startxref(&mut self, input: &[u8], filesize: usize) -> Result<u64> {
@@ -103,10 +104,24 @@ impl Xref {
         }
     }
 
-    pub fn read_prev_table(&mut self, input: &[u8]) -> Result<()> {
+    pub fn read_additional_table(&mut self, input: &[u8]) -> Result<()> {
+        if self.xref_stm.is_some() {
+            self.read_table(input, self.xref_stm.context(error::NoXrefStmSnafu)?)?;
+
+            return Ok(());
+        }
+
         self.read_table(input, self.prev.context(error::NoPrevXrefSnafu)?)?;
 
         Ok(())
+    }
+
+    fn insert_entry(&mut self, key: IndirectReference, entry: XrefEntry) {
+        if self.entries.get(&key).is_some() {
+            return;
+        }
+
+        let _ = self.entries.insert(key, entry);
     }
 
     fn parse_xref_table(&mut self, sections: Vec<XrefTableSection>) -> Result<()> {
@@ -126,7 +141,7 @@ impl Xref {
                     }
                 };
 
-                self.entries.insert(key, entry);
+                self.insert_entry(key, entry);
             }
         }
         Ok(())
@@ -138,6 +153,14 @@ impl Xref {
             .with_context(|| error::ParseFileSnafu {
                 section: "trailer".to_string(),
                 offset: 0usize,
+            })?;
+
+        self.xref_stm = trailer
+            .get("XRefStm")
+            .map(|object| object.as_integer())
+            .transpose()
+            .with_context(|_| error::InvalidFieldSnafu {
+                field: "XRefStm".to_string(),
             })?;
 
         self.get_xref_data(&trailer)
@@ -286,7 +309,7 @@ impl Xref {
                     next_id: entry_data[1],
                 };
 
-                self.entries.insert(key, entry);
+                self.insert_entry(key, entry);
 
                 Ok(())
             }
@@ -299,7 +322,7 @@ impl Xref {
                     offset: entry_data[1],
                 };
 
-                self.entries.insert(key, entry);
+                self.insert_entry(key, entry);
 
                 Ok(())
             }
@@ -310,7 +333,7 @@ impl Xref {
                     stream_ind: entry_data[2],
                 };
 
-                self.entries.insert(key, entry);
+                self.insert_entry(key, entry);
 
                 Ok(())
             }
@@ -333,6 +356,9 @@ mod error {
 
         #[snafu(display("Xref has no prev instances"))]
         NoPrevXref,
+
+        #[snafu(display("Xref has no XRefStm instances"))]
+        NoXrefStm,
 
         #[snafu(display("Invalid object stream provided"))]
         InvalidStream { source: crate::types::ObjectError },
