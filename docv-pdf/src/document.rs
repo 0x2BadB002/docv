@@ -48,6 +48,18 @@ impl Document {
             hash: metadata.hash,
         })
     }
+
+    pub fn info(&self) -> &Info {
+        &self.info
+    }
+
+    pub fn filesize(&self) -> u64 {
+        self.size
+    }
+
+    pub fn hash(&self) -> Option<&Hash> {
+        self.hash.as_ref()
+    }
 }
 
 mod error {

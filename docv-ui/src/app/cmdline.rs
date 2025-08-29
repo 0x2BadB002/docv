@@ -78,7 +78,7 @@ impl Cmdline {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&self) -> Element<'_, Message> {
         if !self.active {
             return row![].into();
         }
