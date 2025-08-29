@@ -44,7 +44,6 @@ impl IndirectObject {
         }
     }
 
-    #[cfg(test)]
     pub fn get_object(&self) -> &Object {
         &self.object
     }

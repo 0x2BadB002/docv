@@ -209,7 +209,13 @@ impl Object {
         match self {
             Object::Dictionary(data) => Ok(data),
             Object::IndirectDefinition(data) => {
-                let data = data.as_dictionary()?;
+                let data = match data.get_object() {
+                    Object::Dictionary(data) => Ok(data),
+                    _ => Err(error::Error::UnexpectedObjectType {
+                        expected: "Dictionary".to_string(),
+                        got: self.clone(),
+                    }),
+                }?;
 
                 Ok(data)
             }
@@ -275,6 +281,17 @@ impl Object {
     pub fn as_stream(&self) -> Result<&Stream> {
         match self {
             Object::Stream(stream) => Ok(stream),
+            Object::IndirectDefinition(data) => {
+                let data = match data.get_object() {
+                    Object::Stream(data) => Ok(data),
+                    _ => Err(error::Error::UnexpectedObjectType {
+                        expected: "Stream".to_string(),
+                        got: self.clone(),
+                    }),
+                }?;
+
+                Ok(data)
+            }
             _ => Err(error::Error::UnexpectedObjectType {
                 expected: "Stream".to_string(),
                 got: self.clone(),
