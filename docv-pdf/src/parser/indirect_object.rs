@@ -18,11 +18,9 @@ use crate::{
 /// Parses a PDF indirect object from the input.
 ///
 /// # Example
-/// ```
 /// 12 0 obj
 ///     (Hello, World!)
 /// endobj
-/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
@@ -30,7 +28,7 @@ use crate::{
 /// # Returns
 /// `IResult` containing:
 /// - Remaining input after parsing
-/// - Parsed [`IndirectObject`] on success
+/// - Parsed `IndirectObject` on success
 pub fn indirect_object(input: &[u8]) -> IResult<&[u8], IndirectObject> {
     let id =
         terminated(digit1, many0(alt((whitespace, comment, eol)))).map_opt(|res| res.parse_to());
@@ -51,9 +49,7 @@ pub fn indirect_object(input: &[u8]) -> IResult<&[u8], IndirectObject> {
 /// Parses a PDF indirect object reference from the input.
 ///
 /// # Example
-/// ```
 /// 12 0 R
-/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
