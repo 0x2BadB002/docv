@@ -30,7 +30,7 @@ pub enum XrefEntry {
     },
     OccupiedCompressed {
         stream_id: usize,
-        stream_offset_id: usize,
+        stream_ind: usize,
     },
 }
 
@@ -307,7 +307,7 @@ impl Xref {
                 let key = IndirectReference { id, gen_id: 0 };
                 let entry = XrefEntry::OccupiedCompressed {
                     stream_id: entry_data[1],
-                    stream_offset_id: entry_data[2],
+                    stream_ind: entry_data[2],
                 };
 
                 self.entries.insert(key, entry);

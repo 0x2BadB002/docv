@@ -1,11 +1,11 @@
-use std::fs::File;
+use std::{collections::BTreeMap, fs::File};
 
 use memmap2::Mmap;
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     parser::read_object,
-    structures::{Xref, XrefEntry, XrefMetadata},
+    structures::{ObjectStream, Xref, XrefEntry, XrefMetadata},
     types::{IndirectReference, Object},
 };
 
@@ -17,6 +17,8 @@ type Result<T> = std::result::Result<T, Error>;
 pub struct Objects {
     file: Mmap,
     xref: Xref,
+
+    object_streams: BTreeMap<usize, ObjectStream>,
 }
 
 impl Objects {
@@ -36,7 +38,14 @@ impl Objects {
             .read_table(&file, xref_offset)
             .context(error::ReadXrefSnafu)?;
 
-        Ok((Self { file, xref }, metadata))
+        Ok((
+            Self {
+                file,
+                xref,
+                object_streams: BTreeMap::default(),
+            },
+            metadata,
+        ))
     }
 
     pub fn get_object(&mut self, object_reference: &IndirectReference) -> Result<Object> {
@@ -54,19 +63,51 @@ impl Objects {
             object: object_reference.clone(),
         })?;
 
-        match entry {
+        match *entry {
             XrefEntry::Free { .. } => Err(error::Error::EntryIsFree {
                 object: object_reference.clone(),
             }
             .into()),
             XrefEntry::Occupied { offset } => {
-                let object = read_object(&self.file[(*offset)..])
+                let object = read_object(&self.file[offset..])
                     .ok()
                     .context(error::ReadEntrySnafu)?;
 
                 Ok(object)
             }
-            XrefEntry::OccupiedCompressed { .. } => Ok(Object::Null),
+            XrefEntry::OccupiedCompressed {
+                stream_id,
+                stream_ind,
+            } => {
+                let stream = self.object_streams.get(&stream_id);
+
+                match stream {
+                    Some(stream) => {
+                        let object = stream
+                            .get_object_by_index(stream_ind)
+                            .context(error::GetObjectFromStreamObjectSnafu)?;
+
+                        Ok(object)
+                    }
+                    None => {
+                        let object = self.get_object(&IndirectReference {
+                            id: stream_id,
+                            gen_id: 0,
+                        })?;
+                        let object = object.as_stream().context(error::ObjectSnafu)?.clone();
+                        let stream = ObjectStream::from_stream(object)
+                            .context(error::CreateObjectStreamSnafu)?;
+
+                        let object = stream
+                            .get_object_by_index(stream_ind)
+                            .context(error::GetObjectFromStreamObjectSnafu)?;
+
+                        self.object_streams.insert(stream_id, stream);
+
+                        Ok(object)
+                    }
+                }
+            }
         }
     }
 }
@@ -95,5 +136,18 @@ mod error {
 
         #[snafu(display("Entry for indirect object {object:?} is free"))]
         EntryIsFree { object: IndirectReference },
+
+        #[snafu(display("Invalid object type"))]
+        Object { source: crate::types::ObjectError },
+
+        #[snafu(display("Can't create ObjectStream from stream"))]
+        CreateObjectStream {
+            source: crate::structures::ObjectStreamError,
+        },
+
+        #[snafu(display("Failed to get object from ObjectStream"))]
+        GetObjectFromStreamObject {
+            source: crate::structures::ObjectStreamError,
+        },
     }
 }
