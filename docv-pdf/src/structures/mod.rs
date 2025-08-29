@@ -4,7 +4,7 @@ mod object_stream;
 mod xref;
 
 pub use hash::Hash;
-pub use info::{Info, Trap};
+pub use info::Info;
 pub use object_stream::ObjectStream;
 pub use xref::{Xref, XrefEntry, XrefMetadata};
 
