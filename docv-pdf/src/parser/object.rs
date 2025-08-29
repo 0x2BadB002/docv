@@ -56,7 +56,7 @@ pub fn read_object(input: &[u8]) -> Result<Object, Error<&[u8]>> {
 /// * `input` - Byte slice to parse
 ///
 /// # Returns
-/// `IResult` containing remaining input and parsed `Object` on success
+/// `IResult` containing remaining input and parsed [`Object`] on success
 pub fn object(input: &[u8]) -> IResult<&[u8], Object> {
     alt((
         indirect_object.map(Object::IndirectDefinition),
@@ -76,10 +76,8 @@ pub fn object(input: &[u8]) -> IResult<&[u8], Object> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{
-        Array, Dictionary, IndirectObject, IndirectReference, Numeric, PdfString, Stream,
-    };
-    use std::{collections::BTreeMap, sync::Arc};
+    use crate::types::{Dictionary, IndirectReference, Numeric, PdfString, Stream};
+    use std::collections::BTreeMap;
 
     #[test]
     fn test_object_parser() {
