@@ -154,6 +154,20 @@ impl Info {
     }
 }
 
+impl std::fmt::Display for Trap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Trap::True => "True",
+                Trap::False => "False",
+                Trap::Unknown => "Unknown",
+            }
+        )
+    }
+}
+
 mod error {
     use snafu::Snafu;
 

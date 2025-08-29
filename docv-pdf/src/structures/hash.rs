@@ -7,7 +7,6 @@ pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct Hash {
     initial: Vec<u8>,
     current: Vec<u8>,
@@ -37,6 +36,30 @@ impl Hash {
             .to_vec();
 
         Ok(Self { initial, current })
+    }
+}
+
+impl std::fmt::Display for Hash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut initial_hex = String::with_capacity(self.initial.len() * 2 + 2);
+        for (i, el) in self.initial.iter().enumerate() {
+            if i != 0 && i != 32 && i % 8 == 0 {
+                initial_hex.push('-');
+            }
+
+            initial_hex += &format!("{el:#04x}")[2..];
+        }
+
+        let mut current_hex = String::with_capacity(self.initial.len() * 2 + 2);
+        for (i, el) in self.current.iter().enumerate() {
+            if i != 0 && i != 32 && i % 8 == 0 {
+                current_hex.push('-');
+            }
+
+            current_hex += &format!("{el:#04x}")[2..];
+        }
+
+        write!(f, "{}:{}", initial_hex, current_hex)
     }
 }
 
