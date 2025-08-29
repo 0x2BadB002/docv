@@ -117,7 +117,7 @@ impl Xref {
     }
 
     fn insert_entry(&mut self, key: IndirectReference, entry: XrefEntry) {
-        if self.entries.get(&key).is_some() {
+        if self.entries.contains_key(&key) {
             return;
         }
 
