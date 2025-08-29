@@ -100,41 +100,103 @@ impl App {
         }
     }
 
-    fn view(&self) -> Element<Message> {
-        let main_content = container(
-            scrollable(
-                text(
-                    self.file
-                        .as_ref()
-                        .map(|file| format!("{file:#?}"))
-                        .or_else(|| {
-                            if !self.error_backtrace {
-                                return None;
-                            }
+    fn view(&self) -> Element<'_, Message> {
+        let info = self.file.as_ref().map(|f| f.info());
 
-                            self.prev_error
-                                .as_ref()
-                                .map(|err| format!("{err:#?}").to_string())
-                        })
-                        .unwrap_or_else(|| "No file openned".to_string()),
+        let no_info = "Unavailable".to_string();
+        let main_content = info
+            .map(|info| {
+                let file = self.file.as_ref().unwrap();
+
+                container(
+                    column![
+                        container(
+                            column![
+                                text(format!(
+                                    "Title: {}",
+                                    info.title.as_ref().unwrap_or(&no_info)
+                                )),
+                                text(format!(
+                                    "Subject: {}",
+                                    info.subject.as_ref().unwrap_or(&no_info)
+                                )),
+                                text(format!(
+                                    "Keywords: {}",
+                                    info.keywords.as_ref().unwrap_or(&no_info)
+                                )),
+                            ]
+                            .padding(5)
+                            .spacing(5)
+                        )
+                        .style(container::rounded_box),
+                        container(
+                            column![
+                                text(format!(
+                                    "Author: {}",
+                                    info.author.as_ref().unwrap_or(&no_info)
+                                )),
+                                text(format!(
+                                    "Creator: {}",
+                                    info.creator.as_ref().unwrap_or(&no_info)
+                                )),
+                                text(format!(
+                                    "Producer: {}",
+                                    info.producer.as_ref().unwrap_or(&no_info)
+                                )),
+                            ]
+                            .padding(5)
+                            .spacing(5)
+                        )
+                        .style(container::rounded_box),
+                        container(
+                            column![
+                                text(format!(
+                                    "Creation date: {}",
+                                    info.creation_date.unwrap_or_default()
+                                )),
+                                text(format!(
+                                    "Modified date: {}",
+                                    info.mod_date.unwrap_or_default()
+                                )),
+                            ]
+                            .padding(5)
+                            .spacing(5)
+                        )
+                        .style(container::rounded_box),
+                        text(format!("Trapped: {}", info.trapped)),
+                        text(format!(
+                            "File size: {:.2} Mib",
+                            file.filesize() as f64 / ((1024 * 1024) as f64)
+                        )),
+                        text(
+                            file.hash()
+                                .map(|hash| { format!("File hash: {hash}") })
+                                .unwrap_or_else(|| "Hash wasn't provided".to_string())
+                        )
+                    ]
+                    .spacing(15)
+                    .padding(5),
                 )
-                .center(),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill);
+            })
+            .unwrap_or_else(|| container(text("No file opened")))
+            .padding(5);
 
         let interface = container(
             column![self.error.as_ref().map_or_else(
                 || self.cmdline.view().map(Message::CmdLine),
                 |err| {
-                    container(text(err.to_string()).style(text::danger))
-                        .height(Length::Shrink)
-                        .width(Length::Fill)
-                        .padding(5)
-                        .into()
+                    container(
+                        text(if self.error_backtrace {
+                            format!("{err:?}")
+                        } else {
+                            format!("{err}")
+                        })
+                        .style(text::danger),
+                    )
+                    .height(Length::Shrink)
+                    .width(Length::Fill)
+                    .padding(5)
+                    .into()
                 }
             ),]
             .spacing(0)
@@ -145,16 +207,23 @@ impl App {
         .align_bottom(Length::Fill)
         .padding(0);
 
-        stack![main_content, interface].into()
+        stack![
+            scrollable(main_content)
+                .height(Length::Fill)
+                .width(Length::Fill),
+            interface
+        ]
+        .into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             keyboard::on_key_press(|key, key_mod| {
-                if let Key::Character(key) = key.as_ref() {
-                    if key == ";" && key_mod == Modifiers::SHIFT {
-                        return Some(Message::ShowCmdline);
-                    }
+                if let Key::Character(key) = key.as_ref()
+                    && key == ";"
+                    && key_mod == Modifiers::SHIFT
+                {
+                    return Some(Message::ShowCmdline);
                 }
                 None
             }),
