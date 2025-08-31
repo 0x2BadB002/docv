@@ -5,7 +5,8 @@ use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     parser::read_object,
-    structures::{ObjectStream, Xref, XrefEntry, XrefMetadata},
+    structures::object_stream::ObjectStream,
+    structures::xref::{Xref, XrefEntry, XrefMetadata},
     types::{IndirectReference, Object},
 };
 
@@ -125,7 +126,7 @@ mod error {
 
         #[snafu(display("Failed to read xref table"))]
         ReadXref {
-            source: crate::structures::XrefError,
+            source: crate::structures::xref::Error,
         },
 
         #[snafu(display("Failed to read info dictionary"))]
@@ -142,12 +143,12 @@ mod error {
 
         #[snafu(display("Can't create ObjectStream from stream"))]
         CreateObjectStream {
-            source: crate::structures::ObjectStreamError,
+            source: crate::structures::object_stream::Error,
         },
 
         #[snafu(display("Failed to get object from ObjectStream"))]
         GetObjectFromStreamObject {
-            source: crate::structures::ObjectStreamError,
+            source: crate::structures::object_stream::Error,
         },
     }
 }

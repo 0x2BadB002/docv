@@ -3,11 +3,9 @@ use std::collections::BTreeMap;
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
-    parser::{
-        Version, XrefObject, XrefTableSection, read_startxref, read_trailer, read_version,
-        read_xref,
-    },
-    structures::Hash,
+    parser::{XrefObject, XrefTableSection, read_startxref, read_trailer, read_version, read_xref},
+    structures::hash::Hash,
+    structures::version::Version,
     types::{Dictionary, IndirectReference, Stream},
 };
 
@@ -64,7 +62,7 @@ impl Xref {
                 section: "version".to_string(),
                 offset: 0usize,
             })?;
-        self.version = version;
+        self.version = Version::from_str(version).context(error::InvalidVersionSnafu)?;
 
         let offset = ((filesize as f64).log10().floor() + 1.0) as usize + 23;
 
@@ -370,6 +368,11 @@ mod error {
         #[snafu(display("Failed to parse section {section}. Error at offset {offset}"))]
         ParseFile { section: String, offset: usize },
 
+        #[snafu(display("Wrong version string format"))]
+        InvalidVersion {
+            source: crate::structures::version::Error,
+        },
+
         #[snafu(display("Xref has no prev instances"))]
         NoPrevXref,
 
@@ -393,7 +396,7 @@ mod error {
 
         #[snafu(display("Wrong field ID hash data format"))]
         InvalidHash {
-            source: crate::structures::HashError,
+            source: crate::structures::hash::Error,
         },
 
         #[snafu(display("Invalid Xref Stream `W` array size. Expected = 3, Got = {size}"))]

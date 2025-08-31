@@ -3,9 +3,7 @@ use std::{fs::File, path::PathBuf};
 use snafu::{ResultExt, Snafu};
 
 use crate::{
-    objects::Objects,
-    parser::Version,
-    structures::{Hash, Info},
+    objects::Objects, structures::hash::Hash, structures::info::Info, structures::version::Version,
 };
 
 #[derive(Debug, Snafu)]
@@ -99,7 +97,7 @@ mod error {
 
         #[snafu(display("Failed to read info dictionary"))]
         Info {
-            source: crate::structures::InfoError,
+            source: crate::structures::info::Error,
         },
     }
 }
