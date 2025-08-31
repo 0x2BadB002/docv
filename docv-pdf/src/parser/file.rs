@@ -19,6 +19,58 @@ use crate::{
     types::{Dictionary, IndirectObject, Stream},
 };
 
+/// Represents the version of a PDF document.
+///
+/// PDF versions follow a major.minor numbering scheme where:
+/// - Major versions are either 1 or 2
+/// - Minor versions range from 0-7 for PDF 1.x
+/// - PDF 2.0 uses major version 2 with minor version 0
+///
+/// The version is typically found in the PDF header and determines
+/// which features are available in the document.
+#[derive(Debug, Default, PartialEq, Clone)]
+pub enum Version {
+    /// PDF Version 1.0 (1993)
+    Pdf1_0,
+    /// PDF Version 1.1 (1996)
+    Pdf1_1,
+    /// PDF Version 1.2 (1996)
+    Pdf1_2,
+    /// PDF Version 1.3 (2000)
+    Pdf1_3,
+    /// PDF Version 1.4 (2001)
+    Pdf1_4,
+    /// PDF Version 1.5 (2003)
+    Pdf1_5,
+    /// PDF Version 1.6 (2004)
+    Pdf1_6,
+    /// PDF Version 1.7 (2006)
+    Pdf1_7,
+    /// PDF Version 2.0 (2017)
+    #[default]
+    Pdf2_0,
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Version::Pdf1_0 => "1.0",
+                Version::Pdf1_1 => "1.1",
+                Version::Pdf1_2 => "1.2",
+                Version::Pdf1_3 => "1.3",
+                Version::Pdf1_4 => "1.4",
+                Version::Pdf1_5 => "1.5",
+                Version::Pdf1_6 => "1.6",
+                Version::Pdf1_7 => "1.7",
+                Version::Pdf2_0 => "2.0",
+            }
+        )
+    }
+}
+
 /// Represents a cross-reference table or object stream in a PDF document.
 ///
 /// PDF documents can store cross-reference information in two formats:
@@ -55,6 +107,62 @@ pub struct XrefTableEntry {
     pub occupied: bool,
 }
 
+/// Parses the PDF version header from the input bytes.
+///
+/// The PDF header must start with `%PDF-` followed by a major and minor
+/// version number separated by a period. Only versions 1.0-1.7 and 2.0
+/// are supported.
+///
+/// # Example
+/// %PDF-1.7
+///
+/// # Arguments
+/// * `input` - Byte slice containing the PDF header
+///
+/// # Returns
+/// `Result` containing:
+/// - Remaining input after parsing
+/// - `Version` enum variant on success
+/// - `Error` if parsing fails or version is unsupported
+pub fn read_version(input: &[u8]) -> Result<(&[u8], Version), Error<&[u8]>> {
+    let mut header = preceded(tag("%PDF-"), separated_pair(digit1, tag("."), digit1)).map_res(
+        |(major, minor): (&[u8], &[u8])| -> Result<Version, nom::Err<Error<&[u8]>>> {
+            if !matches!(major, b"1" | b"2") {
+                return Err(nom::Err::Failure(Error::new(
+                    input,
+                    nom::error::ErrorKind::MapRes,
+                )));
+            }
+            if major == b"1" {
+                match minor {
+                    b"0" => Ok(Version::Pdf1_0),
+                    b"1" => Ok(Version::Pdf1_1),
+                    b"2" => Ok(Version::Pdf1_2),
+                    b"3" => Ok(Version::Pdf1_3),
+                    b"4" => Ok(Version::Pdf1_4),
+                    b"5" => Ok(Version::Pdf1_5),
+                    b"6" => Ok(Version::Pdf1_6),
+                    b"7" => Ok(Version::Pdf1_7),
+                    _ => Err(nom::Err::Failure(Error::new(
+                        input,
+                        nom::error::ErrorKind::MapRes,
+                    ))),
+                }
+            } else {
+                match minor {
+                    b"0" => Ok(Version::Pdf2_0),
+                    _ => Err(nom::Err::Failure(Error::new(
+                        input,
+                        nom::error::ErrorKind::MapRes,
+                    ))),
+                }
+            }
+        },
+    );
+
+    header.parse(input).finish()
+}
+
 /// Parses the `startxref` keyword and returns the byte offset of the last cross-reference section.
 ///
 /// The `startxref` keyword should be followed by:
@@ -64,11 +172,9 @@ pub struct XrefTableEntry {
 /// Allows optional content before the keyword and requires proper line endings.
 ///
 /// # Example
-/// ```
 /// startxref
 /// 12345
 /// %%EOF
-/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
@@ -95,11 +201,9 @@ pub fn read_startxref(input: &[u8]) -> Result<(&[u8], u64), Error<&[u8]>> {
 /// 2. Object stream (compressed cross-reference stream)
 ///
 /// # Example
-/// ```
 /// xref
 /// 0 1
 /// 0000000000 65535 f
-/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
@@ -128,10 +232,8 @@ pub fn read_xref(input: &[u8]) -> Result<(&[u8], XrefObject), Error<&[u8]>> {
 /// Should appear after the last cross-reference section.
 ///
 /// # Example
-/// ```
 /// trailer
 /// << /Size 22 /Root 1 0 R >>
-/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
@@ -214,6 +316,145 @@ mod tests {
     use super::*;
     use crate::types::{Dictionary, IndirectReference, Numeric, Object};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn test_version_parser() {
+        #[derive(Debug)]
+        struct TestCase {
+            name: &'static str,
+            input: &'static [u8],
+            expected: bool,
+            expected_version: Option<Version>,
+            expected_remainder: Option<&'static [u8]>,
+        }
+
+        let test_cases = [
+            // Valid versions
+            TestCase {
+                name: "valid version 1.0",
+                input: b"%PDF-1.0",
+                expected: true,
+                expected_version: Some(Version::Pdf1_0),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid version 1.1",
+                input: b"%PDF-1.1",
+                expected: true,
+                expected_version: Some(Version::Pdf1_1),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid version 1.2",
+                input: b"%PDF-1.2",
+                expected: true,
+                expected_version: Some(Version::Pdf1_2),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid version 1.3",
+                input: b"%PDF-1.3",
+                expected: true,
+                expected_version: Some(Version::Pdf1_3),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid version 1.4",
+                input: b"%PDF-1.4",
+                expected: true,
+                expected_version: Some(Version::Pdf1_4),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid version 1.5",
+                input: b"%PDF-1.5",
+                expected: true,
+                expected_version: Some(Version::Pdf1_5),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid version 1.6",
+                input: b"%PDF-1.6",
+                expected: true,
+                expected_version: Some(Version::Pdf1_6),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid version 1.7",
+                input: b"%PDF-1.7",
+                expected: true,
+                expected_version: Some(Version::Pdf1_7),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid version with content after",
+                input: b"%PDF-1.7some content",
+                expected: true,
+                expected_version: Some(Version::Pdf1_7),
+                expected_remainder: Some(b"some content"),
+            },
+            // Invalid versions
+            TestCase {
+                name: "invalid missing prefix",
+                input: b"1.7",
+                expected: false,
+                expected_version: None,
+                expected_remainder: None,
+            },
+            TestCase {
+                name: "invalid major version",
+                input: b"%PDF-3.0",
+                expected: false,
+                expected_version: None,
+                expected_remainder: None,
+            },
+            TestCase {
+                name: "invalid minor version",
+                input: b"%PDF-1.8",
+                expected: false,
+                expected_version: None,
+                expected_remainder: None,
+            },
+            TestCase {
+                name: "invalid format",
+                input: b"%PDF-1",
+                expected: false,
+                expected_version: None,
+                expected_remainder: None,
+            },
+        ];
+
+        for case in &test_cases {
+            let result = read_version(case.input);
+            assert_eq!(
+                result.is_ok(),
+                case.expected,
+                "Test '{}' failed: expected success: {}",
+                case.name,
+                case.expected,
+            );
+
+            if case.expected {
+                let (actual_remainder, actual_version) = result.unwrap();
+                assert_eq!(
+                    actual_version,
+                    *case.expected_version.as_ref().unwrap(),
+                    "Test '{}' failed: expected version: {:?}, got: {:?}",
+                    case.name,
+                    case.expected_version,
+                    actual_version
+                );
+                assert_eq!(
+                    actual_remainder,
+                    case.expected_remainder.unwrap(),
+                    "Test '{}' failed: expected remainder: {:?}, got: {:?}",
+                    case.name,
+                    case.expected_remainder,
+                    actual_remainder
+                );
+            }
+        }
+    }
 
     #[test]
     fn test_startxref_parser() {

@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
-    parser::{XrefObject, XrefTableSection, read_startxref, read_trailer, read_xref},
+    parser::{
+        Version, XrefObject, XrefTableSection, read_startxref, read_trailer, read_version,
+        read_xref,
+    },
     structures::Hash,
     types::{Dictionary, IndirectReference, Stream},
 };
@@ -17,6 +20,7 @@ pub struct Xref {
     prev: Option<u64>,
     xref_stm: Option<u64>,
     size: usize,
+    version: Version,
     entries: BTreeMap<IndirectReference, XrefEntry>,
 }
 
@@ -35,10 +39,12 @@ pub enum XrefEntry {
     },
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct XrefMetadata {
-    pub hash: Option<Hash>,
     pub root_id: IndirectReference,
+    pub version: Version,
+
+    pub hash: Option<Hash>,
     pub info_id: Option<IndirectReference>,
 }
 
@@ -52,6 +58,14 @@ impl Xref {
     }
 
     pub fn read_startxref(&mut self, input: &[u8], filesize: usize) -> Result<u64> {
+        let (_, version) = read_version(input)
+            .ok()
+            .with_context(|| error::ParseFileSnafu {
+                section: "version".to_string(),
+                offset: 0usize,
+            })?;
+        self.version = version;
+
         let offset = ((filesize as f64).log10().floor() + 1.0) as usize + 23;
 
         let start = filesize - offset;
@@ -216,8 +230,10 @@ impl Xref {
         self.prev = prev;
 
         Ok(XrefMetadata {
-            hash: file_hash,
             root_id,
+            version: self.version.clone(),
+
+            hash: file_hash,
             info_id,
         })
     }

@@ -125,8 +125,8 @@ impl App {
                                     info.keywords.as_ref().unwrap_or(&no_info)
                                 )),
                             ]
-                            .padding(5)
-                            .spacing(5)
+                            .padding(10)
+                            .spacing(10)
                         )
                         .style(container::rounded_box),
                         container(
@@ -144,8 +144,8 @@ impl App {
                                     info.producer.as_ref().unwrap_or(&no_info)
                                 )),
                             ]
-                            .padding(5)
-                            .spacing(5)
+                            .padding(10)
+                            .spacing(10)
                         )
                         .style(container::rounded_box),
                         container(
@@ -159,23 +159,31 @@ impl App {
                                     info.mod_date.unwrap_or_default()
                                 )),
                             ]
-                            .padding(5)
-                            .spacing(5)
+                            .padding(10)
+                            .spacing(10)
                         )
                         .style(container::rounded_box),
-                        text(format!("Trapped: {}", info.trapped)),
-                        text(format!(
-                            "File size: {:.2} Mib",
-                            file.filesize() as f64 / ((1024 * 1024) as f64)
-                        )),
-                        text(
-                            file.hash()
-                                .map(|hash| { format!("File hash: {hash}") })
-                                .unwrap_or_else(|| "Hash wasn't provided".to_string())
+                        container(
+                            column![
+                                text(format!("Version: {}", file.version())),
+                                text(format!("Trapped: {}", info.trapped)),
+                                text(format!(
+                                    "File size: {:.2} Mib",
+                                    file.filesize() as f64 / ((1024 * 1024) as f64)
+                                )),
+                                text(
+                                    file.hash()
+                                        .map(|hash| { format!("File hash: {hash}") })
+                                        .unwrap_or_else(|| "Hash wasn't provided".to_string())
+                                )
+                            ]
+                            .padding(10)
+                            .spacing(10)
                         )
+                        .style(container::rounded_box),
                     ]
                     .spacing(15)
-                    .padding(5),
+                    .padding(10),
                 )
             })
             .unwrap_or_else(|| container(text("No file opened")))

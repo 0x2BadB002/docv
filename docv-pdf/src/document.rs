@@ -4,6 +4,7 @@ use snafu::{ResultExt, Snafu};
 
 use crate::{
     objects::Objects,
+    parser::Version,
     structures::{Hash, Info},
 };
 
@@ -17,6 +18,7 @@ pub struct Document {
     objects: Objects,
 
     size: u64,
+    version: Version,
     hash: Option<Hash>,
 }
 
@@ -45,12 +47,17 @@ impl Document {
             objects,
 
             size: file_metadata.len(),
+            version: metadata.version,
             hash: metadata.hash,
         })
     }
 
     pub fn info(&self) -> &Info {
         &self.info
+    }
+
+    pub fn version(&self) -> &Version {
+        &self.version
     }
 
     pub fn filesize(&self) -> u64 {
