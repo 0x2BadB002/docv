@@ -3,7 +3,8 @@ use std::{fs::File, path::PathBuf};
 use snafu::{ResultExt, Snafu};
 
 use crate::{
-    objects::Objects, structures::hash::Hash, structures::info::Info, structures::version::Version,
+    objects::Objects,
+    structures::{hash::Hash, info::Info, root::Root, version::Version},
 };
 
 #[derive(Debug, Snafu)]
@@ -12,6 +13,7 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub struct Document {
+    root: Root,
     info: Info,
     objects: Objects,
 
@@ -29,6 +31,15 @@ impl Document {
 
         let (mut objects, metadata) = Objects::from_file(file).context(error::ObjectsSnafu)?;
 
+        let root_object =
+            objects
+                .get_object(&metadata.root_id)
+                .with_context(|_| error::ObjectSnafu {
+                    object: metadata.root_id,
+                })?;
+
+        let root = Root::from_object(root_object).context(error::RootSnafu)?;
+
         let info = metadata
             .info_id
             .map(|object| -> Result<Info> {
@@ -41,6 +52,7 @@ impl Document {
             .transpose()?;
 
         Ok(Self {
+            root,
             info: info.unwrap_or_default(),
             objects,
 
@@ -55,7 +67,7 @@ impl Document {
     }
 
     pub fn version(&self) -> &Version {
-        &self.version
+        self.root.version.as_ref().unwrap_or(&self.version)
     }
 
     pub fn filesize(&self) -> u64 {
@@ -93,6 +105,11 @@ mod error {
         Object {
             object: IndirectReference,
             source: crate::objects::Error,
+        },
+
+        #[snafu(display("Failed to read root dictionary"))]
+        Root {
+            source: crate::structures::root::Error,
         },
 
         #[snafu(display("Failed to read info dictionary"))]
