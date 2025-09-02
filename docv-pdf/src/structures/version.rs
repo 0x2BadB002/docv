@@ -1,5 +1,7 @@
 use snafu::{ResultExt, Snafu};
 
+use crate::types::Object;
+
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
@@ -37,14 +39,6 @@ pub enum Version {
 }
 
 impl Version {
-    pub fn from_bytes(source: &[u8]) -> Result<Self> {
-        let version_str = str::from_utf8(source).with_context(|_| error::InvalidBytesSnafu {
-            data: source.to_vec(),
-        })?;
-
-        Self::from_str(version_str)
-    }
-
     pub fn from_str(source: &str) -> Result<Self> {
         match source {
             "1.0" => Ok(Version::Pdf1_0),
@@ -61,6 +55,20 @@ impl Version {
             }
             .into()),
         }
+    }
+
+    pub fn from_bytes(source: &[u8]) -> Result<Self> {
+        let version_str = str::from_utf8(source).with_context(|_| error::InvalidBytesSnafu {
+            data: source.to_vec(),
+        })?;
+
+        Self::from_str(version_str)
+    }
+
+    pub fn from_object(object: &Object) -> Result<Self> {
+        let name = object.as_name().context(error::InvalidObjectSnafu)?;
+
+        Self::from_str(name)
     }
 
     pub fn as_str(&self) -> &str {
@@ -98,5 +106,8 @@ mod error {
             data: Vec<u8>,
             source: std::str::Utf8Error,
         },
+
+        #[snafu(display("Invalid object passed"))]
+        InvalidObject { source: crate::types::ObjectError },
     }
 }
