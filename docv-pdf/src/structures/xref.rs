@@ -5,7 +5,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use crate::{
     parser::{XrefObject, XrefTableSection, read_startxref, read_trailer, read_version, read_xref},
     structures::hash::Hash,
-    structures::version::Version,
+    structures::root::version::Version,
     types::{Dictionary, IndirectReference, Stream},
 };
 
@@ -370,7 +370,7 @@ mod error {
 
         #[snafu(display("Wrong version string format"))]
         InvalidVersion {
-            source: crate::structures::version::Error,
+            source: crate::structures::root::version::Error,
         },
 
         #[snafu(display("Xref has no prev instances"))]

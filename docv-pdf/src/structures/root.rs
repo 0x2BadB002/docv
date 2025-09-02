@@ -1,7 +1,9 @@
 use snafu::{OptionExt, ResultExt, Snafu};
 
+pub mod version;
+
 use crate::{
-    structures::version::Version,
+    structures::root::version::Version,
     types::{IndirectReference, Object},
 };
 
@@ -127,7 +129,7 @@ mod error {
 
         #[snafu(display("Invalid version field"))]
         InvalidVersion {
-            source: crate::structures::version::Error,
+            source: crate::structures::root::version::Error,
         },
 
         #[snafu(display("Invalid field type"))]
