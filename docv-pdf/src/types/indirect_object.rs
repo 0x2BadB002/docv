@@ -5,11 +5,11 @@ use crate::types::object::Object;
 /// Represents a parsed PDF indirect object.
 ///
 /// PDF indirect objects consist of:
-/// 1. An object ID (positive integer)
-/// 2. A generation number (non-negative integer)
-/// 3. The `obj` keyword
-/// 4. The object content
-/// 5. The `endobj` keyword
+/// - An object ID (positive integer)
+/// - A generation number (non-negative integer)
+/// - The `obj` keyword
+/// - The object content
+/// - The `endobj` keyword
 ///
 /// Allows optional whitespace, comments, and end-of-line markers
 /// between components.
@@ -23,9 +23,9 @@ pub struct IndirectObject {
 /// Represents a parsed PDF indirect object reference.
 ///
 /// PDF references consist of:
-/// 1. An object ID (positive integer)
-/// 2. A generation number (non-negative integer)
-/// 3. The `R` keyword
+/// - An object ID (positive integer)
+/// - A generation number (non-negative integer)
+/// - The `R` keyword
 ///
 /// Allows optional whitespace, comments, and end-of-line markers
 /// between components.
