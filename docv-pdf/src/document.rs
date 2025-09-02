@@ -4,7 +4,11 @@ use snafu::{ResultExt, Snafu};
 
 use crate::{
     objects::Objects,
-    structures::{hash::Hash, info::Info, root::Root, version::Version},
+    structures::{
+        hash::Hash,
+        info::Info,
+        root::{Root, version::Version},
+    },
 };
 
 #[derive(Debug, Snafu)]
