@@ -163,6 +163,28 @@ impl Object {
         }
     }
 
+    pub fn as_bool(&self) -> Result<bool> {
+        match self {
+            Object::Boolean(data) => Ok(*data),
+            _ => Err(error::Error::UnexpectedObjectType {
+                expected: "Boolean".to_string(),
+                got: self.clone(),
+            }
+            .into()),
+        }
+    }
+
+    pub fn as_name(&self) -> Result<&str> {
+        match self {
+            Object::Name(name) => Ok(name),
+            _ => Err(error::Error::UnexpectedObjectType {
+                expected: "Name".to_string(),
+                got: self.clone(),
+            }
+            .into()),
+        }
+    }
+
     /// Attempts to convert the object to an array slice.
     ///
     /// Only succeeds if the object is an `Object::Array`.
