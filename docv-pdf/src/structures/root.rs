@@ -1,5 +1,6 @@
 use snafu::{OptionExt, ResultExt, Snafu};
 
+pub mod pages;
 pub mod version;
 
 use crate::{

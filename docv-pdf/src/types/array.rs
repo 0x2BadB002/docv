@@ -5,6 +5,12 @@ pub struct Array {
     data: Vec<Object>,
 }
 
+impl Array {
+    pub fn as_vec(&self) -> &Vec<Object> {
+        &self.data
+    }
+}
+
 impl std::ops::Deref for Array {
     type Target = Vec<Object>;
 

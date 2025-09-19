@@ -28,6 +28,7 @@ enum Message {
 #[derive(Default, Debug)]
 struct App {
     file: Option<Arc<Document>>,
+    page_count: usize,
     error: Option<Arc<Error>>,
     prev_error: Option<Arc<Error>>,
     error_backtrace: bool,
@@ -74,9 +75,14 @@ impl App {
 
                 self.cmdline.show().map(Message::CmdLine)
             }
-            Message::FileOpened(file) => {
+            Message::FileOpened(mut file) => {
                 self.error = None;
                 self.error_backtrace = false;
+
+                self.page_count = Arc::<Document>::get_mut(&mut file)
+                    .unwrap()
+                    .get_page_count()
+                    .unwrap_or(0);
 
                 self.file = Some(file);
 
@@ -101,15 +107,21 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let info = self.file.as_ref().map(|f| f.info());
-
         let no_info = "Unavailable".to_string();
-        let main_content = info
-            .map(|info| {
-                let file = self.file.as_ref().unwrap();
+        let main_content = self
+            .file
+            .as_ref()
+            .map(|file| {
+                let info = file.info();
 
                 container(
                     column![
+                        container(
+                            column![text(format!("Pages count: {}", self.page_count)),]
+                                .padding(10)
+                                .spacing(10)
+                        )
+                        .style(container::rounded_box),
                         container(
                             column![
                                 text(format!(

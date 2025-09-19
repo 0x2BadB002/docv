@@ -7,7 +7,7 @@ use crate::{
     structures::{
         hash::Hash,
         info::Info,
-        root::{Root, version::Version},
+        root::{Root, pages::PagesTreeRoot, version::Version},
     },
 };
 
@@ -81,6 +81,19 @@ impl Document {
     pub fn hash(&self) -> Option<&Hash> {
         self.hash.as_ref()
     }
+
+    pub fn get_page_count(&mut self) -> Result<usize> {
+        let pages = self
+            .objects
+            .get_object(&self.root.pages)
+            .with_context(|_| error::ObjectSnafu {
+                object: self.root.pages.clone(),
+            })?;
+
+        let pages = PagesTreeRoot::from_object(pages).context(error::PagesSnafu)?;
+
+        Ok(pages.count)
+    }
 }
 
 mod error {
@@ -119,6 +132,11 @@ mod error {
         #[snafu(display("Failed to read info dictionary"))]
         Info {
             source: crate::structures::info::Error,
+        },
+
+        #[snafu(display("Failed to read page tree"))]
+        Pages {
+            source: crate::structures::root::pages::Error,
         },
     }
 }
