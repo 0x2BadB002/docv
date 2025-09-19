@@ -72,13 +72,13 @@ fn literal_string(input: &[u8]) -> IResult<&[u8], PdfString> {
     delimited(tag("("), final_str, tag(")"))
         .map(|mut data: Vec<u8>| {
             if data.starts_with(&[0xfe, 0xff]) {
-                if data.len() % 2 != 0 {
+                if !data.len().is_multiple_of(2) {
                     data.push(0);
                 }
 
                 let data = data
                     .chunks_exact(2)
-                    .map(|chunk: &[u8]| ((chunk[0] as u16) << 8 | (chunk[1] as u16)))
+                    .map(|chunk: &[u8]| (chunk[0] as u16) << 8 | (chunk[1] as u16))
                     .collect::<Vec<u16>>();
 
                 return PdfString::Literal(String::from_utf16_lossy(&data));
