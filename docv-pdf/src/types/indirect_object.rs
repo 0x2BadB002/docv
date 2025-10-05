@@ -29,7 +29,7 @@ pub struct IndirectObject {
 ///
 /// Allows optional whitespace, comments, and end-of-line markers
 /// between components.
-#[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone, Default)]
+#[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone, Default, Copy)]
 pub struct IndirectReference {
     pub id: usize,
     pub gen_id: usize,
