@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu, ensure};
 
 use crate::{
     parser::{XrefObject, XrefTableSection, read_startxref, read_trailer, read_version, read_xref},
@@ -252,24 +252,21 @@ impl Xref {
                 field: "W".to_string(),
             })?
             .as_array()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "W".to_string(),
-            })?
-            .iter()
-            .map(|el| el.as_integer())
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "W".to_string(),
-            })?;
-        if w.len() != 3 {
-            return Err(error::Error::InvalidXrefStreamWSize { size: w.len() }.into());
-        }
+            .of(|obj| obj.as_integer())
+            .context(error::InvalidArraySnafu { field: "W" })?;
+
+        ensure!(
+            w.len() == 3,
+            error::InvalidXrefStreamWSizeSnafu { size: w.len() }
+        );
 
         let index = stream
             .dictionary
             .get("Index")
-            .map(|object| {
-                let array = object.as_array()?;
+            .map(|object| object.as_array().generic())
+            .transpose()
+            .context(error::InvalidArraySnafu { field: "Index" })?
+            .map(|array| {
                 array
                     .chunks_exact(2)
                     .map(|chunk| {
@@ -397,6 +394,12 @@ mod error {
         #[snafu(display("Wrong field ID hash data format"))]
         InvalidHash {
             source: crate::structures::hash::Error,
+        },
+
+        #[snafu(display("Invalid array for field {field}"))]
+        InvalidArray {
+            field: &'static str,
+            source: crate::types::array::Error,
         },
 
         #[snafu(display("Invalid Xref Stream `W` array size. Expected = 3, Got = {size}"))]

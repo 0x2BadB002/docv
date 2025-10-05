@@ -4,6 +4,7 @@ use snafu::{OptionExt, Snafu};
 
 use crate::types::{
     Array, Dictionary, IndirectObject, IndirectReference, Numeric, PdfString, Stream,
+    array::ArrayBuilder,
 };
 
 #[derive(Debug, Snafu)]
@@ -179,7 +180,13 @@ impl Object {
         }
     }
 
-    /// Attempts to convert the object to an array slice.
+    /// Attempts to convert the object to an array slice converting
+    /// array contents into specific type.
+    ///
+    /// If you do not want to have indirect references in resulting
+    /// array, use `.with_objects(...)` before using `.of(...)` method.
+    ///
+    /// If you want array of `Object` without converting then use `.generic()`.
     ///
     /// Only succeeds if the object is an `Object::Array`.
     ///
@@ -195,19 +202,12 @@ impl Object {
     ///
     /// # Example
     /// ```
-    /// let array_obj = Object::Array(vec![Object::Null]);
-    /// let value = array_obj.as_array().unwrap();
-    /// assert_eq!(value, &[Object::Null]);
+    /// let array_obj = Object::Array(vec![Object::Name(String::from("Name"))]);
+    /// let value = array_obj.as_array().of(|obj| obj.as_name().to_string()).unwrap();
+    /// assert_eq!(value, vec![String::from("Name")]);
     /// ```
-    pub fn as_array(&self) -> Result<&Array> {
-        match self {
-            Object::Array(data) => Ok(data),
-            _ => Err(error::Error::UnexpectedObjectType {
-                expected: "Array".to_string(),
-                got: self.clone(),
-            }
-            .into()),
-        }
+    pub fn as_array<'a>(&'a self) -> ArrayBuilder<'a> {
+        ArrayBuilder::new(self)
     }
 
     pub fn as_string(&self) -> Result<&PdfString> {

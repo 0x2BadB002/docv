@@ -14,7 +14,10 @@ pub struct Hash {
 
 impl Hash {
     pub fn from_object(object: &Object) -> Result<Self> {
-        let array = object.as_array().context(error::InvalidObjectSnafu)?;
+        let array = object
+            .as_array()
+            .generic()
+            .context(error::InvalidArraySnafu)?;
 
         if array.len() != 2 {
             return Err(error::Error::InvalidArraySize {
@@ -71,6 +74,9 @@ mod error {
     pub(super) enum Error {
         #[snafu(display("Object conversion error"))]
         InvalidObject { source: crate::types::ObjectError },
+
+        #[snafu(display("Array conversion error"))]
+        InvalidArray { source: crate::types::array::Error },
 
         #[snafu(display("Wrong array size. Expected = {expected}; Got = {got}"))]
         InvalidArraySize { expected: usize, got: usize },

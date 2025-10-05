@@ -126,7 +126,8 @@ mod error {
 
         #[snafu(display("Failed to read xref table"))]
         ReadXref {
-            source: crate::structures::xref::Error,
+            #[snafu(source(from(crate::structures::xref::Error, Box::new)))]
+            source: Box<crate::structures::xref::Error>,
         },
 
         #[snafu(display("Failed to read info dictionary"))]
