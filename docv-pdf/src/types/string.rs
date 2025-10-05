@@ -95,6 +95,18 @@ impl PdfString {
     }
 }
 
+impl From<String> for PdfString {
+    fn from(value: String) -> Self {
+        Self::Literal(value)
+    }
+}
+
+impl<'a> From<&'a str> for PdfString {
+    fn from(value: &'a str) -> Self {
+        Self::Literal(value.to_string())
+    }
+}
+
 mod error {
     use snafu::Snafu;
 
