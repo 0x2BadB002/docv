@@ -7,7 +7,7 @@ use crate::{
     structures::{
         hash::Hash,
         info::Info,
-        root::{Root, pages::PagesTreeRoot, version::Version},
+        root::{Root, pages::Pages, version::Version},
     },
 };
 
@@ -82,7 +82,7 @@ impl Document {
         self.hash.as_ref()
     }
 
-    pub fn get_page_count(&mut self) -> Result<usize> {
+    pub fn pages<'a>(&'a mut self) -> Result<Pages<'a>> {
         let pages = self
             .objects
             .get_object(&self.root.pages)
@@ -90,9 +90,13 @@ impl Document {
                 object: self.root.pages.clone(),
             })?;
 
-        let pages = PagesTreeRoot::from_object(pages).context(error::PagesSnafu)?;
+        let tree_root = pages
+            .as_dictionary()
+            .context(error::InvalidObjectTypeSnafu)?;
 
-        Ok(pages.count)
+        let pages = Pages::new(tree_root, &self.objects).context(error::PagesSnafu)?;
+
+        Ok(pages)
     }
 }
 
@@ -123,6 +127,9 @@ mod error {
             object: IndirectReference,
             source: crate::objects::Error,
         },
+
+        #[snafu(display("Invalid object type"))]
+        InvalidObjectType { source: crate::types::ObjectError },
 
         #[snafu(display("Failed to read root dictionary"))]
         Root {

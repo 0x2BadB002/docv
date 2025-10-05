@@ -57,7 +57,7 @@ impl ObjectStream {
             .map(|object| object.as_indirect_ref())
             .transpose()
             .with_context(|_| error::InvalidFieldSnafu {
-                field: "First".to_string(),
+                field: "Extends".to_string(),
             })?
             .cloned();
 

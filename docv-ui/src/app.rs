@@ -81,7 +81,8 @@ impl App {
 
                 self.page_count = Arc::<Document>::get_mut(&mut file)
                     .unwrap()
-                    .get_page_count()
+                    .pages()
+                    .map(|pages| pages.count())
                     .unwrap_or(0);
 
                 self.file = Some(file);
