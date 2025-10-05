@@ -142,19 +142,13 @@ impl Object {
     /// # Example
     /// ```
     /// let real_obj = Object::Numeric(Numeric::Real(3.14));
-    /// let value: f32 = real_obj.as_float().unwrap();
+    /// let value: f64 = real_obj.as_float().unwrap();
     /// assert_eq!(value, 3.14);
     /// ```
-    pub fn as_float<T>(&self) -> Result<T>
-    where
-        T: TryFrom<f64>,
-    {
+    pub fn as_float(&self) -> Result<f64> {
         match self {
-            Object::Numeric(Numeric::Real(data)) => Ok(TryInto::try_into(*data)
-                .ok()
-                .with_context(|| error::TypeConvertionSnafu {
-                    object: self.clone(),
-                })?),
+            Object::Numeric(Numeric::Integer(data)) => Ok(*data as f64),
+            Object::Numeric(Numeric::Real(data)) => Ok(*data),
             _ => Err(error::Error::UnexpectedObjectType {
                 expected: "Real".to_string(),
                 got: self.clone(),
