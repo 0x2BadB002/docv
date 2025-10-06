@@ -1,6 +1,11 @@
 use snafu::{ResultExt, Snafu, ensure};
 
-use crate::{objects::Objects, types::Object};
+pub mod rectangle;
+
+use crate::{
+    objects::Objects,
+    types::{Object, Rectangle},
+};
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
@@ -11,107 +16,9 @@ type Result<T> = std::result::Result<T, Error>;
 /// Arrays are represented as a sequence of objects enclosed in square brackets.
 /// According to the PDF specification, arrays can contain any combination of
 /// object types, including other arrays and dictionaries.
-///
-/// # Examples
-/// ```
-/// let array = Array::from([
-///     Object::Numeric(Numeric::Integer(1)),
-///     Object::Numeric(Numeric::Integer(2)),
-///     Object::Numeric(Numeric::Integer(3)),
-/// ]);
-/// ```
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Array {
     data: Vec<Object>,
-}
-
-/// A PDF rectangle object defined by four coordinates.
-///
-/// In PDF, rectangles are represented as arrays of four numbers:
-/// `[x1, y1, x2, y2]` where:
-/// - `(x1, y1)` is the lower-left corner
-/// - `(x2, y2)` is the upper-right corner
-///
-/// This struct normalizes the coordinates to ensure consistent
-/// top-left and bottom-right points regardless of input order.
-///
-/// # Examples
-/// ```
-/// let rect = Rectangle::new(0.0, 0.0, 100.0, 50.0);
-/// assert_eq!(rect.top(), 50.0);
-/// assert_eq!(rect.bottom(), 0.0);
-/// assert_eq!(rect.left(), 0.0);
-/// assert_eq!(rect.right(), 100.0);
-/// ```
-#[derive(Debug, Clone, PartialEq)]
-pub struct Rectangle {
-    /// X-coordinate of the left edge
-    left: f64,
-    /// Y-coordinate of the bottom edge
-    bottom: f64,
-    /// X-coordinate of the right edge
-    right: f64,
-    /// Y-coordinate of the top edge
-    top: f64,
-}
-
-impl Rectangle {
-    /// Creates a new rectangle from four coordinates.
-    ///
-    /// The coordinates are automatically normalized to ensure
-    /// `left <= right` and `bottom <= top`.
-    ///
-    /// # Arguments
-    /// * `x1` - First x-coordinate
-    /// * `y1` - First y-coordinate
-    /// * `x2` - Second x-coordinate
-    /// * `y2` - Second y-coordinate
-    ///
-    /// # Returns
-    /// A normalized `Rectangle` with proper left/right and bottom/top ordering.
-    pub fn new(x1: f64, y1: f64, x2: f64, y2: f64) -> Self {
-        let left = x1.min(x2);
-        let right = x1.max(x2);
-        let bottom = y1.min(y2);
-        let top = y1.max(y2);
-
-        Self {
-            left,
-            bottom,
-            right,
-            top,
-        }
-    }
-
-    /// Returns the left edge x-coordinate.
-    pub fn left(&self) -> f64 {
-        self.left
-    }
-
-    /// Returns the bottom edge y-coordinate.
-    pub fn bottom(&self) -> f64 {
-        self.bottom
-    }
-
-    /// Returns the right edge x-coordinate.
-    pub fn right(&self) -> f64 {
-        self.right
-    }
-
-    /// Returns the top edge y-coordinate.
-    pub fn top(&self) -> f64 {
-        self.top
-    }
-
-    /// Returns the width of the rectangle.
-    pub fn width(&self) -> f64 {
-        self.right - self.left
-    }
-
-    /// Returns the height of the rectangle.
-    pub fn height(&self) -> f64 {
-        self.top - self.bottom
-    }
 }
 
 /// A builder for constructing and processing PDF arrays.
@@ -121,21 +28,6 @@ impl Rectangle {
 /// - Extracting raw arrays with indirect reference resolution
 /// - Converting array elements to specific types
 /// - Optional object resolution for handling indirect references
-///
-/// # Examples
-/// ```
-/// let array_obj = Object::Array(Array::from([
-///     Object::Numeric(Numeric::Integer(1)),
-///     Object::Numeric(Numeric::Integer(2)),
-/// ]));
-///
-/// // Convert to vector of integers
-/// let numbers: Vec<i32> = ArrayBuilder::new(&array_obj)
-///     .of(|obj| obj.as_integer())
-///     .unwrap();
-///
-/// assert_eq!(numbers, vec![1, 2]);
-/// ```
 pub struct ArrayBuilder<'a> {
     array: &'a Object,
     objects: Option<&'a mut Objects>,
@@ -168,12 +60,6 @@ impl<'a> ArrayBuilder<'a> {
     ///
     /// # Returns
     /// Returns `&mut Self` for method chaining.
-    ///
-    /// # Examples
-    /// ```
-    /// let builder = ArrayBuilder::new(&array_obj)
-    ///     .with_objects(&mut objects);
-    /// ```
     pub fn with_objects(&mut self, objects: &'a mut Objects) -> &mut Self {
         self.objects = Some(objects);
         self
@@ -194,20 +80,6 @@ impl<'a> ArrayBuilder<'a> {
     /// - The input object is not an array
     /// - Object resolution fails (when using [`with_objects`])
     ///
-    /// # Examples
-    /// ```
-    /// let array_obj = Object::Array(Array::from(vec![
-    ///     Object::Boolean(true),
-    ///     Object::Numeric(Numeric::Integer(42)),
-    /// ]));
-    ///
-    /// let array = ArrayBuilder::new(&array_obj)
-    ///     .generic()
-    ///     .unwrap();
-    ///
-    /// assert_eq!(array.len(), 2);
-    /// ```
-    ///
     /// [`with_objects`]: ArrayBuilder::with_objects
     pub fn generic(&mut self) -> Result<Array> {
         let array = match self.array {
@@ -225,15 +97,14 @@ impl<'a> ArrayBuilder<'a> {
             Some(objects) => {
                 let mut res = Vec::with_capacity(array.len());
                 for object in array.iter() {
-                    let object =
-                        match object {
-                            Object::IndirectReference(obj_ref) => objects
-                                .get_object(obj_ref)
-                                .context(error::ObjectNotFoundSnafu {
-                                    reference: *obj_ref,
-                                })?,
-                            _ => object.clone(),
-                        };
+                    let object = match object {
+                        Object::IndirectReference(obj_ref) => {
+                            objects.get_object(obj_ref).context(error::ObjectNotFound {
+                                reference: *obj_ref,
+                            })?
+                        }
+                        _ => object.clone(),
+                    };
 
                     res.push(object);
                 }
@@ -267,36 +138,10 @@ impl<'a> ArrayBuilder<'a> {
     /// - Object resolution fails (when using [`with_objects`])
     /// - The conversion function fails for any element
     ///
-    /// # Examples
-    /// ```
-    /// let array_obj = Object::Array(Array::from(vec![
-    ///     Object::Numeric(Numeric::Integer(1)),
-    ///     Object::Numeric(Numeric::Integer(2)),
-    ///     Object::Numeric(Numeric::Integer(3)),
-    /// ]));
-    ///
-    /// // Convert to integers
-    /// let numbers: Vec<i32> = ArrayBuilder::new(&array_obj)
-    ///     .of(|obj| obj.as_integer())
-    ///     .unwrap();
-    ///
-    /// assert_eq!(numbers, vec![1, 2, 3]);
-    ///
-    /// // Convert with custom logic
-    /// let doubled: Vec<i32> = ArrayBuilder::new(&array_obj)
-    ///     .of(|obj| {
-    ///         let num: i32 = obj.as_integer()?;
-    ///         Ok(num * 2)
-    ///     })
-    ///     .unwrap();
-    ///
-    /// assert_eq!(doubled, vec![2, 4, 6]);
-    /// ```
-    ///
     /// [`with_objects`]: ArrayBuilder::with_objects
     pub fn of<F, O>(&mut self, init_fn: F) -> Result<Vec<O>>
     where
-        F: Fn(&Object) -> std::result::Result<O, crate::types::ObjectError>,
+        F: Fn(&Object) -> std::result::Result<O, crate::types::object::Error>,
     {
         let array = match self.array {
             Object::Array(arr) => arr,
@@ -313,17 +158,15 @@ impl<'a> ArrayBuilder<'a> {
             Some(objects) => {
                 let mut res = Vec::with_capacity(array.len());
                 for object in array.iter() {
-                    let object =
-                        match object {
-                            Object::IndirectReference(obj_ref) => objects
-                                .get_object(obj_ref)
-                                .context(error::ObjectNotFoundSnafu {
-                                    reference: *obj_ref,
-                                })?,
-                            _ => object.clone(),
-                        };
-                    let object =
-                        init_fn(&object).context(error::ArrayContentTypeInitFailedSnafu)?;
+                    let object = match object {
+                        Object::IndirectReference(obj_ref) => {
+                            objects.get_object(obj_ref).context(error::ObjectNotFound {
+                                reference: *obj_ref,
+                            })?
+                        }
+                        _ => object.clone(),
+                    };
+                    let object = init_fn(&object).context(error::FailedArrayConvertion)?;
 
                     res.push(object);
                 }
@@ -334,7 +177,7 @@ impl<'a> ArrayBuilder<'a> {
                 .iter()
                 .map(init_fn)
                 .collect::<std::result::Result<Vec<_>, _>>()
-                .context(error::ArrayContentTypeInitFailedSnafu)?),
+                .context(error::FailedArrayConvertion)?),
         }
     }
 
@@ -355,32 +198,13 @@ impl<'a> ArrayBuilder<'a> {
     /// - Any element cannot be converted to a numeric value
     /// - Object resolution fails (when using [`with_objects`])
     ///
-    /// # Examples
-    /// ```
-    /// let rect_array = Object::Array(Array::from(vec![
-    ///     Object::Numeric(Numeric::Integer(10)),
-    ///     Object::Numeric(Numeric::Integer(20)),
-    ///     Object::Numeric(Numeric::Integer(100)),
-    ///     Object::Numeric(Numeric::Integer(80)),
-    /// ]));
-    ///
-    /// let rect = ArrayBuilder::new(&rect_array)
-    ///     .rectangle()
-    ///     .unwrap();
-    ///
-    /// assert_eq!(rect.left(), 10.0);
-    /// assert_eq!(rect.bottom(), 20.0);
-    /// assert_eq!(rect.right(), 100.0);
-    /// assert_eq!(rect.top(), 80.0);
-    /// ```
-    ///
     /// [`with_objects`]: ArrayBuilder::with_objects
     pub fn rectangle(&mut self) -> Result<Rectangle> {
         let coords: Vec<f64> = self.of(|obj| obj.as_float())?;
 
         ensure!(
             coords.len() == 4,
-            error::InvalidRectangleFormatSnafu {
+            error::InvalidRectangleFormat {
                 expected: 4usize,
                 got: coords.len()
             }
@@ -420,7 +244,7 @@ mod error {
     use snafu::Snafu;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Unexpected object type. Expected = {expected}. Got = {got:?}"))]
         UnexpectedObjectType { expected: &'static str, got: Object },
@@ -432,7 +256,7 @@ mod error {
         },
 
         #[snafu(display("Failed to convert array type"))]
-        ArrayContentTypeInitFailed { source: crate::types::ObjectError },
+        FailedArrayConvertion { source: crate::types::object::Error },
 
         #[snafu(display("Invalid rectangle format: expected {expected} coordinates, got {got}"))]
         InvalidRectangleFormat { expected: usize, got: usize },

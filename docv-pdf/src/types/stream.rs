@@ -29,7 +29,6 @@ type Result<T> = std::result::Result<T, Error>;
 /// - Filter pipelines (multiple filters applied in sequence)
 ///
 /// # Example
-/// ```
 /// <<
 ///   /Length 128
 ///   /Filter /FlateDecode
@@ -37,7 +36,6 @@ type Result<T> = std::result::Result<T, Error>;
 /// stream
 /// ...compressed binary data...
 /// endstream
-/// ```
 #[derive(Debug, PartialEq, Clone)]
 pub struct Stream {
     pub dictionary: Dictionary,
@@ -83,19 +81,13 @@ impl Stream {
     /// - The Length value cannot be converted to an integer
     /// - An unsupported filter is specified
     /// - Decompression fails (corrupted data, etc.)
-    ///
-    /// # Example
-    /// ```
-    /// let mut stream = Stream { ... };
-    /// stream.process_filters()?; // Decompresses if FlateDecode filter is present
-    /// ```
     pub fn process_filters(&mut self) -> Result<()> {
         let content_length = self
             .dictionary
             .get("Length")
-            .with_context(|| error::NoStreamLengthSnafu)?
+            .context(error::NoStreamLength)?
             .as_integer()
-            .with_context(|_| error::UnexpectedDictionaryValueSnafu)?;
+            .context(error::UnexpectedDictionaryValue)?;
 
         let filter = match self.dictionary.get("Filter") {
             Some(object) => process_filter(object)?,
@@ -172,7 +164,7 @@ fn apply_filter(data: &[u8], filter: &StreamFilterType, content_length: usize) -
 
             decoder
                 .read_to_end(&mut data)
-                .context(error::DecompressionSnafu)?;
+                .context(error::Decompression)?;
 
             Ok(data)
         }
@@ -190,7 +182,7 @@ mod error {
     use crate::types::object::Object;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Unexpected dictionary value"))]
         UnexpectedDictionaryValue { source: crate::types::object::Error },

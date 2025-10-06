@@ -58,7 +58,7 @@ impl Version {
     }
 
     pub fn from_bytes(source: &[u8]) -> Result<Self> {
-        let version_str = str::from_utf8(source).with_context(|_| error::InvalidBytesSnafu {
+        let version_str = str::from_utf8(source).with_context(|_| error::InvalidBytes {
             data: source.to_vec(),
         })?;
 
@@ -66,7 +66,7 @@ impl Version {
     }
 
     pub fn from_object(object: &Object) -> Result<Self> {
-        let name = object.as_name().context(error::InvalidObjectSnafu)?;
+        let name = object.as_name().context(error::InvalidObject)?;
 
         Self::from_str(name)
     }
@@ -96,7 +96,7 @@ mod error {
     use snafu::Snafu;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Unknown version string passed: {data}"))]
         UnknownVersion { data: String },
@@ -108,6 +108,6 @@ mod error {
         },
 
         #[snafu(display("Invalid object passed"))]
-        InvalidObject { source: crate::types::ObjectError },
+        InvalidObject { source: crate::types::object::Error },
     }
 }

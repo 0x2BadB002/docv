@@ -1,9 +1,8 @@
-use chrono::{DateTime, FixedOffset};
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     objects::Objects,
-    types::{Array, Dictionary, IndirectReference, Object, Rectangle, Stream},
+    types::{Array, Dictionary, IndirectReference, Object, Rectangle, Stream, string::Date},
 };
 
 #[derive(Debug, Snafu)]
@@ -42,10 +41,6 @@ impl<'a> std::iter::Iterator for Pages<'a> {
     fn count(self) -> usize {
         self.root.leaf_count
     }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.node.leaf_count, Some(self.root.leaf_count))
-    }
 }
 
 #[derive(Debug)]
@@ -61,7 +56,7 @@ pub struct Page {
     trim_box: Rectangle,
     art_box: Rectangle,
 
-    last_modified: Option<DateTime<FixedOffset>>,
+    last_modified: Option<Date>,
     box_color_info: Option<Dictionary>,
     group: Option<Dictionary>,
     thumb: Option<Stream>,
@@ -99,7 +94,7 @@ impl Page {
     ) -> Result<Self> {
         let contents = dictionary
             .get("Contents")
-            .context(error::FieldNotFoundSnafu { field: "Contents" })?;
+            .context(error::FieldNotFound { field: "Contents" })?;
 
         let contents = match contents {
             Object::Stream(stream) => vec![stream.clone()],
@@ -107,12 +102,12 @@ impl Page {
                 .iter()
                 .map(|object| object.as_stream().cloned())
                 .collect::<std::result::Result<Vec<_>, _>>()
-                .context(error::InvalidTypeSnafu { field: "Contents" })?,
+                .context(error::InvalidType { field: "Contents" })?,
             Object::IndirectReference(object_ref) => {
                 let object = objects
                     .get_object(object_ref)
                     .ok()
-                    .context(error::FieldNotFoundSnafu { field: "Contents" })?;
+                    .context(error::FieldNotFound { field: "Contents" })?;
 
                 match object {
                     Object::Stream(stream) => vec![stream],
@@ -120,7 +115,7 @@ impl Page {
                         .iter()
                         .map(|object| object.as_stream().cloned())
                         .collect::<std::result::Result<Vec<_>, _>>()
-                        .context(error::InvalidTypeSnafu { field: "Contents" })?,
+                        .context(error::InvalidType { field: "Contents" })?,
                     _ => todo!(),
                 }
             }
@@ -133,23 +128,23 @@ impl Page {
             .get("Resources")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Resources" })?
+            .context(error::InvalidType { field: "Resources" })?
             .or_else(|| inheritable_attrs.resources.clone())
-            .context(error::FieldNotFoundSnafu { field: "Resources" })?;
+            .context(error::FieldNotFound { field: "Resources" })?;
 
         let media_box = dictionary
             .get("MediaBox")
             .map(|object| object.as_array().rectangle())
             .transpose()
-            .context(error::InvalidArraySnafu { field: "MediaBox" })?
+            .context(error::InvalidArray { field: "MediaBox" })?
             .or_else(|| inheritable_attrs.media_box.clone())
-            .context(error::FieldNotFoundSnafu { field: "MediaBox" })?;
+            .context(error::FieldNotFound { field: "MediaBox" })?;
 
         let crop_box = dictionary
             .get("CropBox")
             .map(|object| object.as_array().rectangle())
             .transpose()
-            .context(error::InvalidArraySnafu { field: "CropBox" })?
+            .context(error::InvalidArray { field: "CropBox" })?
             .or_else(|| inheritable_attrs.crop_box.clone())
             .unwrap_or_else(|| media_box.clone());
 
@@ -157,47 +152,47 @@ impl Page {
             .get("BleedBox")
             .map(|object| object.as_array().rectangle())
             .transpose()
-            .context(error::InvalidArraySnafu { field: "BleedBox" })?
+            .context(error::InvalidArray { field: "BleedBox" })?
             .unwrap_or_else(|| crop_box.clone());
 
         let trim_box = dictionary
             .get("TrimBox")
             .map(|object| object.as_array().rectangle())
             .transpose()
-            .context(error::InvalidArraySnafu { field: "TrimBox" })?
+            .context(error::InvalidArray { field: "TrimBox" })?
             .unwrap_or_else(|| crop_box.clone());
 
         let art_box = dictionary
             .get("ArtBox")
             .map(|object| object.as_array().rectangle())
             .transpose()
-            .context(error::InvalidArraySnafu { field: "ArtBox" })?
+            .context(error::InvalidArray { field: "ArtBox" })?
             .unwrap_or_else(|| crop_box.clone());
 
         let rotate = dictionary
             .get("Rotate")
             .map(|object| object.as_integer())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Rotate" })?
+            .context(error::InvalidType { field: "Rotate" })?
             .unwrap_or(0);
 
         let user_unit = dictionary
             .get("UserUnit")
             .map(|object| object.as_float())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "UserUnit" })?
+            .context(error::InvalidType { field: "UserUnit" })?
             .unwrap_or(1.0);
 
         let last_modified = dictionary
             .get("LastModified")
-            .map(|object| -> Result<DateTime<FixedOffset>> {
+            .map(|object| -> Result<Date> {
                 Ok(object
                     .as_string()
-                    .context(error::InvalidTypeSnafu {
+                    .context(error::InvalidType {
                         field: "LastModified",
                     })?
                     .to_date()
-                    .context(error::InvalidDateSnafu {
+                    .context(error::InvalidDate {
                         field: "LastModified",
                     })?)
             })
@@ -207,7 +202,7 @@ impl Page {
             .get("BoxColorInfo")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu {
+            .context(error::InvalidType {
                 field: "BoxColorInfo",
             })?;
 
@@ -215,80 +210,80 @@ impl Page {
             .get("Group")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Group" })?;
+            .context(error::InvalidType { field: "Group" })?;
 
         let thumb = dictionary
             .get("Thumb")
             .map(|object| object.as_stream().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Thumb" })?;
+            .context(error::InvalidType { field: "Thumb" })?;
 
         let b = dictionary
             .get("B")
             .map(|object| object.as_array().generic())
             .transpose()
-            .context(error::InvalidArraySnafu { field: "B" })?;
+            .context(error::InvalidArray { field: "B" })?;
 
         let dur = dictionary
             .get("Dur")
             .map(|object| object.as_float())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Dur" })?;
+            .context(error::InvalidType { field: "Dur" })?;
 
         let trans = dictionary
             .get("Trans")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Trans" })?;
+            .context(error::InvalidType { field: "Trans" })?;
 
         let annots = dictionary
             .get("Annots")
             .map(|object| object.as_array().generic())
             .transpose()
-            .context(error::InvalidArraySnafu { field: "Annots" })?;
+            .context(error::InvalidArray { field: "Annots" })?;
 
         let aa = dictionary
             .get("AA")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "AA" })?;
+            .context(error::InvalidType { field: "AA" })?;
 
         let metadata = dictionary
             .get("Metadata")
             .map(|object| object.as_stream().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Metadata" })?;
+            .context(error::InvalidType { field: "Metadata" })?;
 
         let piece_info = dictionary
             .get("PieceInfo")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "PieceInfo" })?;
+            .context(error::InvalidType { field: "PieceInfo" })?;
 
         let struct_parents = dictionary
             .get("Dur")
             .map(|object| object.as_integer())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Dur" })?;
+            .context(error::InvalidType { field: "Dur" })?;
 
         let id = dictionary
             .get("ID")
             .map(|object| object.as_string())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "ID" })?
+            .context(error::InvalidType { field: "ID" })?
             .map(|s| s.as_bytes().to_vec());
 
         let pz = dictionary
             .get("PZ")
             .map(|object| object.as_float())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "PZ" })?;
+            .context(error::InvalidType { field: "PZ" })?;
 
         let separation_info = dictionary
             .get("SeparationInfo")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu {
+            .context(error::InvalidType {
                 field: "SeparationInfo",
             })?;
 
@@ -296,7 +291,7 @@ impl Page {
             .get("Tabs")
             .map(|object| object.as_name())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Tabs" })?
+            .context(error::InvalidType { field: "Tabs" })?
             .map(|name| match name {
                 "R" => TabOrder::Row,
                 "C" => TabOrder::Column,
@@ -309,7 +304,7 @@ impl Page {
             .get("TemplateInstantiated")
             .map(|object| object.as_name())
             .transpose()
-            .context(error::InvalidTypeSnafu {
+            .context(error::InvalidType {
                 field: "TemplateInstantiated",
             })?
             .map(|s| s.to_string());
@@ -318,13 +313,13 @@ impl Page {
             .get("PresSteps")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "PresSteps" })?;
+            .context(error::InvalidType { field: "PresSteps" })?;
 
         let vp = dictionary
             .get("VP")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "VP" })?;
+            .context(error::InvalidType { field: "VP" })?;
 
         Ok(Self {
             contents,
@@ -372,16 +367,16 @@ impl PagesTreeNode {
     fn from_dictionary(dictionary: &Dictionary) -> Result<Self> {
         let kids = dictionary
             .get("Kids")
-            .context(error::FieldNotFoundSnafu { field: "Kids" })?
+            .context(error::FieldNotFound { field: "Kids" })?
             .as_array()
             .of(|obj| obj.as_indirect_ref().cloned())
-            .context(error::InvalidArraySnafu { field: "Kids" })?;
+            .context(error::InvalidArray { field: "Kids" })?;
 
         let count = dictionary
             .get("Count")
-            .context(error::FieldNotFoundSnafu { field: "Count" })?
+            .context(error::FieldNotFound { field: "Count" })?
             .as_integer()
-            .context(error::InvalidTypeSnafu { field: "Count" })?;
+            .context(error::InvalidType { field: "Count" })?;
 
         let mut inheritable_attrs = InheritableAttributes::default();
         inheritable_attrs.read(dictionary)?;
@@ -408,25 +403,25 @@ impl InheritableAttributes {
             .get("Resources")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Resources" })?;
+            .context(error::InvalidType { field: "Resources" })?;
 
         self.media_box = dictionary
             .get("MediaBox")
             .map(|object| object.as_array().rectangle())
             .transpose()
-            .context(error::InvalidArraySnafu { field: "MediaBox" })?;
+            .context(error::InvalidArray { field: "MediaBox" })?;
 
         self.crop_box = dictionary
             .get("CropBox")
             .map(|object| object.as_array().rectangle())
             .transpose()
-            .context(error::InvalidArraySnafu { field: "CropBox" })?;
+            .context(error::InvalidArray { field: "CropBox" })?;
 
         self.rotate = dictionary
             .get("Rotate")
             .map(|object| object.as_integer())
             .transpose()
-            .context(error::InvalidTypeSnafu { field: "Rotate" })?;
+            .context(error::InvalidType { field: "Rotate" })?;
 
         Ok(())
     }
@@ -436,7 +431,7 @@ mod error {
     use snafu::Snafu;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Required field {field} not found"))]
         FieldNotFound { field: &'static str },
@@ -456,7 +451,7 @@ mod error {
         #[snafu(display("Invalid date data for field {field}"))]
         InvalidDate {
             field: &'static str,
-            source: crate::types::StringError,
+            source: crate::types::string::Error,
         },
     }
 }

@@ -55,7 +55,49 @@ pub enum PdfString {
     Hexadecimal(Vec<u8>),
 }
 
+/// Represents a date and time value in a PDF document.
+///
+/// PDF dates are represented as strings in the format:
+/// `(D:YYYYMMDDHHmmSSOHH'mm')`
+///
+/// Where:
+/// - `YYYY` = year (0000-9999)
+/// - `MM` = month (01-12)
+/// - `DD` = day (01-31)
+/// - `HH` = hour (00-23)
+/// - `mm` = minute (00-59)
+/// - `SS` = second (00-59)
+/// - `O` = UTC relationship (`+`, `-`, or `Z` for UTC)
+/// - `HH'` = time zone hour offset (00-23)
+/// - `mm'` = time zone minute offset (00-59)
+///
+/// The time zone offset and seconds are optional. If no time zone is specified,
+/// the date is interpreted as local time.
+///
+/// # Examples
+/// (D:20231231093000)        // Local time: Dec 31, 2023, 09:30:00
+/// (D:20231231093000Z)       // UTC: Dec 31, 2023, 09:30:00
+/// (D:20231231093000-05'00') // EST: Dec 31, 2023, 09:30:00 (UTC-5)
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Date {
+    data: DateTime<FixedOffset>,
+}
+
 impl PdfString {
+    /// Attempts to convert the PDF string to a UTF-8 string slice.
+    ///
+    /// For literal strings, returns the content as-is after processing escape sequences.
+    /// For hexadecimal strings, attempts to decode the bytes as UTF-8.
+    ///
+    /// # Returns
+    /// - `Ok(&str)` containing the string content if successful
+    /// - `Err(Error)` if the hexadecimal data cannot be decoded as UTF-8
+    ///
+    /// # Errors
+    /// Returns `Error::EncodingStr` if the hexadecimal string contains invalid UTF-8 data.
+    ///
+    /// # Note
+    /// Removes Byte Order Mark (BOM) `\u{FEFF}` from the beginning of strings if present.
     pub fn as_str(&self) -> Result<&str> {
         match self {
             PdfString::Literal(data) => {
@@ -66,7 +108,7 @@ impl PdfString {
                 Ok(data)
             }
             PdfString::Hexadecimal(data) => {
-                let mut data = str::from_utf8(data).with_context(|_| error::EncodingStrSnafu {
+                let mut data = str::from_utf8(data).with_context(|_| error::EncodingStr {
                     data: data.to_vec(),
                 })?;
 
@@ -77,6 +119,13 @@ impl PdfString {
         }
     }
 
+    /// Returns the raw byte representation of the PDF string.
+    ///
+    /// For literal strings, returns the UTF-8 bytes of the string content.
+    /// For hexadecimal strings, returns the decoded byte data.
+    ///
+    /// # Returns
+    /// `&[u8]` slice containing the raw byte data
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             PdfString::Literal(data) => data.as_bytes(),
@@ -84,14 +133,25 @@ impl PdfString {
         }
     }
 
-    pub fn to_date(&self) -> Result<DateTime<FixedOffset>> {
+    /// Attempts to parse the PDF string as a date value.
+    ///
+    /// PDF dates follow the format: `(D:YYYYMMDDHHmmSSOHH'mm')`
+    ///
+    /// # Returns
+    /// - `Ok(Date)` containing the parsed date if successful
+    /// - `Err(Error)` if the string cannot be parsed as a valid PDF date
+    ///
+    /// # Errors
+    /// Returns `Error::ParseTo` if the string does not match the expected PDF date format
+    /// or contains invalid date components.
+    pub fn to_date(&self) -> Result<Date> {
         let input = self.as_str()?;
-        let (_, date) = read_date(input).ok().with_context(|| error::ParseToSnafu {
+        let (_, date) = read_date(input).ok().with_context(|| error::ParseTo {
             data: input.to_string(),
             target: "date",
         })?;
 
-        Ok(date)
+        Ok(Date { data: date })
     }
 }
 
@@ -107,11 +167,17 @@ impl<'a> From<&'a str> for PdfString {
     }
 }
 
+impl std::fmt::Display for Date {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.data.fmt(f)
+    }
+}
+
 mod error {
     use snafu::Snafu;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Can't encode into UTF-8. Data = {data:?}"))]
         EncodingStr {
@@ -120,6 +186,6 @@ mod error {
         },
 
         #[snafu(display("Can't parse inner string '{data}' into {target}"))]
-        ParseTo { data: String, target: String },
+        ParseTo { data: String, target: &'static str },
     }
 }

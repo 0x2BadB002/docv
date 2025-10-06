@@ -14,7 +14,12 @@ use nom::{
 /// the year are optional. The timezone offset is optional and defaults to UTC+0.
 ///
 /// # Example
-/// "D:20210421143000+02'00" -> DateTime with offset +2 hours
+///
+/// DateTime with offset +2 hours
+///
+/// ```text
+/// "D:20210421143000+02'00"
+/// ```
 ///
 /// # Arguments
 /// * `input` - String slice to parse

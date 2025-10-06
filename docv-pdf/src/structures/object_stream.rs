@@ -1,7 +1,7 @@
 use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
-    parser::{object_stream_data_header, read_object},
+    parser::{read_object, read_object_stream_header},
     types::{IndirectReference, Object, Stream},
 };
 
@@ -9,6 +9,11 @@ use crate::{
 pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
 
+/// A PDF object stream that contains multiple compressed objects in a single stream.
+///
+/// Object streams are used in PDF 1.5+ to compress multiple objects into a single stream,
+/// reducing file size and improving performance. They contain an index of object IDs
+/// and offsets followed by the compressed object data.
 #[derive(Debug)]
 pub struct ObjectStream {
     ids: Vec<Entry>,
@@ -17,6 +22,7 @@ pub struct ObjectStream {
     data: Vec<u8>,
 }
 
+/// An entry in the object stream index mapping an object ID to its data offset.
 #[derive(Debug)]
 struct Entry {
     _id: usize,
@@ -25,45 +31,32 @@ struct Entry {
 
 impl ObjectStream {
     pub fn from_stream(mut stream: Stream) -> Result<Self> {
-        stream
-            .process_filters()
-            .context(error::FiltersProcessingSnafu)?;
+        stream.process_filters().context(error::FiltersProcessing)?;
 
         let n = stream
             .dictionary
             .get("N")
-            .with_context(|| error::FieldNotFoundSnafu {
-                field: "N".to_string(),
-            })?
+            .context(error::FieldNotFound { field: "N" })?
             .as_integer()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "N".to_string(),
-            })?;
+            .context(error::InvalidField { field: "N" })?;
 
         let first = stream
             .dictionary
             .get("First")
-            .with_context(|| error::FieldNotFoundSnafu {
-                field: "First".to_string(),
-            })?
+            .context(error::FieldNotFound { field: "First" })?
             .as_integer()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "First".to_string(),
-            })?;
+            .context(error::InvalidField { field: "First" })?;
 
         let extends = stream
             .dictionary
             .get("Extends")
-            .map(|object| object.as_indirect_ref())
+            .map(|object| object.as_indirect_ref().cloned())
             .transpose()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "Extends".to_string(),
-            })?
-            .cloned();
+            .context(error::InvalidField { field: "Extends" })?;
 
-        let ids = object_stream_data_header(&stream.data[..first], n)
+        let ids = read_object_stream_header(&stream.data[..first], n)
             .ok()
-            .context(error::ParseIdsSnafu)?
+            .context(error::ParseIds)?
             .iter()
             .map(|(id, offset)| Entry {
                 _id: *id,
@@ -79,12 +72,23 @@ impl ObjectStream {
         })
     }
 
+    /// Retrieves an object from the stream by its index position.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The index of the object in the stream's internal index
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The index is out of bounds
+    /// - The object data at the calculated offset cannot be parsed
     pub fn get_object_by_index(&self, index: usize) -> Result<Object> {
         let offset = self.ids[index].offset;
 
         let object = read_object(&self.data[(self.first_offset + offset)..])
             .ok()
-            .context(error::ParseObjectSnafu)?;
+            .context(error::ParseObject)?;
 
         Ok(object)
     }
@@ -94,18 +98,18 @@ mod error {
     use snafu::Snafu;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Failed to process stream filters"))]
-        FiltersProcessing { source: crate::types::StreamError },
+        FiltersProcessing { source: crate::types::stream::Error },
 
         #[snafu(display("Field '{field}' not found"))]
-        FieldNotFound { field: String },
+        FieldNotFound { field: &'static str },
 
         #[snafu(display("Field '{field}' has unexpected type"))]
         InvalidField {
-            field: String,
-            source: crate::types::ObjectError,
+            field: &'static str,
+            source: crate::types::object::Error,
         },
 
         #[snafu(display("Failed to parse ids array"))]

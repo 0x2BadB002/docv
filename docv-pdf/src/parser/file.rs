@@ -62,7 +62,9 @@ pub struct XrefTableEntry {
 /// are supported.
 ///
 /// # Example
+/// ```text
 /// %PDF-1.7
+/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice containing the PDF header
@@ -90,9 +92,11 @@ pub fn read_version(input: &[u8]) -> Result<(&[u8], &str), Error<&[u8]>> {
 /// Allows optional content before the keyword and requires proper line endings.
 ///
 /// # Example
+/// ```text
 /// startxref
 /// 12345
 /// %%EOF
+/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
@@ -119,9 +123,11 @@ pub fn read_startxref(input: &[u8]) -> Result<(&[u8], u64), Error<&[u8]>> {
 /// 2. Object stream (compressed cross-reference stream)
 ///
 /// # Example
+/// ```text
 /// xref
 /// 0 1
 /// 0000000000 65535 f
+/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
@@ -150,8 +156,10 @@ pub fn read_xref(input: &[u8]) -> Result<(&[u8], XrefObject), Error<&[u8]>> {
 /// Should appear after the last cross-reference section.
 ///
 /// # Example
+/// ```text
 /// trailer
 /// << /Size 22 /Root 1 0 R >>
+/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
@@ -233,7 +241,6 @@ fn xref_table(input: &[u8]) -> IResult<&[u8], Vec<XrefTableSection>> {
 mod tests {
     use super::*;
     use crate::types::{Dictionary, IndirectReference, Numeric, Object};
-    use std::collections::BTreeMap;
 
     #[test]
     fn test_version_parser() {
@@ -578,60 +585,50 @@ mod tests {
                 name: "valid minimal trailer",
                 input: b"trailer<<>>",
                 expected: true,
-                expected_dict: Some(Dictionary {
-                    records: BTreeMap::new(),
-                }),
+                expected_dict: Some(Dictionary::default()),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid trailer with dictionary",
                 input: b"trailer<</Size 10/Root 1 0 R>>",
                 expected: true,
-                expected_dict: Some(Dictionary {
-                    records: BTreeMap::from([
-                        ("Size".to_string(), Object::Numeric(Numeric::Integer(10))),
-                        (
-                            "Root".to_string(),
-                            Object::IndirectReference(IndirectReference { id: 1, gen_id: 0 }),
-                        ),
-                    ]),
-                }),
+                expected_dict: Some(Dictionary::from([
+                    ("Size", Object::Numeric(Numeric::Integer(10))),
+                    (
+                        "Root",
+                        Object::IndirectReference(IndirectReference { id: 1, gen_id: 0 }),
+                    ),
+                ])),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid trailer with whitespace",
                 input: b"trailer \n\t << /Size 10 >>",
                 expected: true,
-                expected_dict: Some(Dictionary {
-                    records: BTreeMap::from([(
-                        "Size".to_string(),
-                        Object::Numeric(Numeric::Integer(10)),
-                    )]),
-                }),
+                expected_dict: Some(Dictionary::from([(
+                    "Size",
+                    Object::Numeric(Numeric::Integer(10)),
+                )])),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid trailer with whitespace in begining",
                 input: b"\n\t trailer \n\t << /Size 10 >>",
                 expected: true,
-                expected_dict: Some(Dictionary {
-                    records: BTreeMap::from([(
-                        "Size".to_string(),
-                        Object::Numeric(Numeric::Integer(10)),
-                    )]),
-                }),
+                expected_dict: Some(Dictionary::from([(
+                    "Size",
+                    Object::Numeric(Numeric::Integer(10)),
+                )])),
                 expected_remainder: Some(b""),
             },
             TestCase {
                 name: "valid trailer with remainder",
                 input: b"trailer<</Size 10>>startxref",
                 expected: true,
-                expected_dict: Some(Dictionary {
-                    records: BTreeMap::from([(
-                        "Size".to_string(),
-                        Object::Numeric(Numeric::Integer(10)),
-                    )]),
-                }),
+                expected_dict: Some(Dictionary::from([(
+                    "Size",
+                    Object::Numeric(Numeric::Integer(10)),
+                )])),
                 expected_remainder: Some(b"startxref"),
             },
             // Invalid trailers

@@ -56,37 +56,31 @@ impl Xref {
     }
 
     pub fn read_startxref(&mut self, input: &[u8], filesize: usize) -> Result<u64> {
-        let (_, version) = read_version(input)
-            .ok()
-            .with_context(|| error::ParseFileSnafu {
-                section: "version".to_string(),
-                offset: 0usize,
-            })?;
-        self.version = Version::from_str(version).context(error::InvalidVersionSnafu)?;
+        let (_, version) = read_version(input).ok().context(error::ParseFile {
+            section: "version",
+            offset: 0usize,
+        })?;
+        self.version = Version::from_str(version).context(error::InvalidVersion)?;
 
         let offset = ((filesize as f64).log10().floor() + 1.0) as usize + 23;
 
         let start = filesize - offset;
-        let (_, offset) =
-            read_startxref(&input[start..])
-                .ok()
-                .with_context(|| error::ParseFileSnafu {
-                    section: "startxref".to_string(),
-                    offset: start,
-                })?;
+        let (_, offset) = read_startxref(&input[start..])
+            .ok()
+            .context(error::ParseFile {
+                section: "startxref",
+                offset: start,
+            })?;
 
         Ok(offset)
     }
 
     pub fn read_table(&mut self, input: &[u8], offset: u64) -> Result<XrefMetadata> {
         let start = offset as usize;
-        let (remained, data) =
-            read_xref(&input[start..])
-                .ok()
-                .with_context(|| error::ParseFileSnafu {
-                    section: "xref".to_string(),
-                    offset: start,
-                })?;
+        let (remained, data) = read_xref(&input[start..]).ok().context(error::ParseFile {
+            section: "xref",
+            offset: start,
+        })?;
 
         match data {
             XrefObject::Table(sections) => {
@@ -95,21 +89,17 @@ impl Xref {
                 self.parse_trailer(remained)
             }
             XrefObject::Stream(mut stream) => {
-                stream
-                    .process_filters()
-                    .context(error::StreamProcessingSnafu)?;
+                stream.process_filters().context(error::StreamProcessing)?;
 
                 self.parse_xref_stream(stream)
             }
             XrefObject::IndirectStream(indirect_object) => {
                 let mut stream = indirect_object
                     .as_stream()
-                    .with_context(|_| error::InvalidStreamSnafu)?
+                    .context(error::InvalidStream)?
                     .clone();
 
-                stream
-                    .process_filters()
-                    .context(error::StreamProcessingSnafu)?;
+                stream.process_filters().context(error::StreamProcessing)?;
 
                 self.parse_xref_stream(stream)
             }
@@ -117,13 +107,12 @@ impl Xref {
     }
 
     pub fn read_additional_table(&mut self, input: &[u8]) -> Result<()> {
-        if self.xref_stm.is_some() {
-            self.read_table(input, self.xref_stm.context(error::NoXrefStmSnafu)?)?;
+        let offset = self
+            .xref_stm
+            .or(self.prev)
+            .context(error::NoXRefAdditionalSources)?;
 
-            return Ok(());
-        }
-
-        self.read_table(input, self.prev.context(error::NoPrevXrefSnafu)?)?;
+        self.read_table(input, offset)?;
 
         Ok(())
     }
@@ -160,20 +149,16 @@ impl Xref {
     }
 
     fn parse_trailer(&mut self, input: &[u8]) -> Result<XrefMetadata> {
-        let (_, trailer) = read_trailer(input)
-            .ok()
-            .with_context(|| error::ParseFileSnafu {
-                section: "trailer".to_string(),
-                offset: 0usize,
-            })?;
+        let (_, trailer) = read_trailer(input).ok().context(error::ParseFile {
+            section: "trailer",
+            offset: 0usize,
+        })?;
 
         self.xref_stm = trailer
             .get("XRefStm")
             .map(|object| object.as_integer())
             .transpose()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "XRefStm".to_string(),
-            })?;
+            .context(error::InvalidField { field: "XRefStm" })?;
 
         self.get_xref_data(&trailer)
     }
@@ -181,50 +166,38 @@ impl Xref {
     fn get_xref_data(&mut self, data: &Dictionary) -> Result<XrefMetadata> {
         let size = data
             .get("Size")
-            .with_context(|| error::FieldNotFoundSnafu {
-                field: "Size".to_string(),
-            })?
+            .context(error::FieldNotFound { field: "Size" })?
             .as_integer()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "Size".to_string(),
-            })?;
+            .context(error::InvalidField { field: "Size" })?;
 
         let prev = data
             .get("Prev")
             .map(|object| object.as_integer())
             .transpose()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "Prev".to_string(),
-            })?;
+            .context(error::InvalidField { field: "Prev" })?;
 
         let file_hash = data
             .get("ID")
-            .map(|object| Hash::from_object(object).context(error::InvalidHashSnafu))
-            .transpose()?;
+            .map(Hash::from_object)
+            .transpose()
+            .context(error::InvalidHash)?;
 
         let root_id = data
             .get("Root")
-            .with_context(|| error::FieldNotFoundSnafu {
-                field: "Root".to_string(),
-            })?
+            .context(error::FieldNotFound { field: "Root" })?
             .as_indirect_ref()
             .cloned()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "Root".to_string(),
-            })?;
+            .context(error::InvalidField { field: "Root" })?;
 
         let info_id = data
             .get("Info")
             .map(|object| object.as_indirect_ref().cloned())
             .transpose()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "Info".to_string(),
-            })?;
+            .context(error::InvalidField { field: "Info" })?;
 
         // TODO: Support encrypt
-        if size > self.size {
-            self.size = size;
-        }
+
+        self.size = self.size.max(size);
         self.prev = prev;
 
         Ok(XrefMetadata {
@@ -248,16 +221,14 @@ impl Xref {
         let w = stream
             .dictionary
             .get("W")
-            .with_context(|| error::FieldNotFoundSnafu {
-                field: "W".to_string(),
-            })?
+            .context(error::FieldNotFound { field: "W" })?
             .as_array()
             .of(|obj| obj.as_integer())
-            .context(error::InvalidArraySnafu { field: "W" })?;
+            .context(error::InvalidArray { field: "W" })?;
 
         ensure!(
             w.len() == 3,
-            error::InvalidXrefStreamWSizeSnafu { size: w.len() }
+            error::InvalidXrefStreamWSize { size: w.len() }
         );
 
         let index = stream
@@ -265,7 +236,7 @@ impl Xref {
             .get("Index")
             .map(|object| object.as_array().generic())
             .transpose()
-            .context(error::InvalidArraySnafu { field: "Index" })?
+            .context(error::InvalidArray { field: "Index" })?
             .map(|array| {
                 array
                     .chunks_exact(2)
@@ -277,9 +248,7 @@ impl Xref {
                     .collect::<std::result::Result<Vec<_>, _>>()
             })
             .transpose()
-            .with_context(|_| error::InvalidFieldSnafu {
-                field: "Index".to_string(),
-            })?
+            .context(error::InvalidField { field: "Index" })?
             .unwrap_or_else(|| vec![(0, self.size)]);
 
         let entry_size = w.iter().sum();
@@ -360,35 +329,35 @@ mod error {
     use snafu::Snafu;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Failed to parse section {section}. Error at offset {offset}"))]
-        ParseFile { section: String, offset: usize },
+        ParseFile {
+            section: &'static str,
+            offset: usize,
+        },
 
         #[snafu(display("Wrong version string format"))]
         InvalidVersion {
             source: crate::structures::root::version::Error,
         },
 
-        #[snafu(display("Xref has no prev instances"))]
-        NoPrevXref,
-
-        #[snafu(display("Xref has no XRefStm instances"))]
-        NoXrefStm,
+        #[snafu(display("Xref has no XRefStm or Prev instances"))]
+        NoXRefAdditionalSources,
 
         #[snafu(display("Invalid object stream provided"))]
-        InvalidStream { source: crate::types::ObjectError },
+        InvalidStream { source: crate::types::object::Error },
 
         #[snafu(display("Error during stream processing"))]
-        StreamProcessing { source: crate::types::StreamError },
+        StreamProcessing { source: crate::types::stream::Error },
 
         #[snafu(display("Xref field `{field}` not found"))]
-        FieldNotFound { field: String },
+        FieldNotFound { field: &'static str },
 
         #[snafu(display("Wrong field {field} data format"))]
         InvalidField {
-            field: String,
-            source: crate::types::ObjectError,
+            field: &'static str,
+            source: crate::types::object::Error,
         },
 
         #[snafu(display("Wrong field ID hash data format"))]

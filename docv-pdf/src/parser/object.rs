@@ -77,7 +77,6 @@ pub fn object(input: &[u8]) -> IResult<&[u8], Object> {
 mod tests {
     use super::*;
     use crate::types::{Dictionary, IndirectReference, Numeric, PdfString, Stream};
-    use std::collections::BTreeMap;
 
     #[test]
     fn test_object_parser() {
@@ -176,12 +175,10 @@ mod tests {
                 name: "dictionary object",
                 input: b"<< /Key (Value) >>",
                 expected: true,
-                expected_value: Some(Object::Dictionary(Dictionary {
-                    records: BTreeMap::from([(
-                        "Key".to_string(),
-                        Object::String(PdfString::Literal("Value".to_string())),
-                    )]),
-                })),
+                expected_value: Some(Object::Dictionary(Dictionary::from([(
+                    "Key",
+                    Object::String(PdfString::Literal("Value".to_string())),
+                )]))),
                 expected_remainder: Some(b""),
             },
             // Indirect reference test

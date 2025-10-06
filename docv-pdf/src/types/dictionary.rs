@@ -14,47 +14,40 @@ use crate::types::object::Object;
 /// - Implemented using BTreeMap for ordered storage and efficient lookups
 ///
 /// # Examples
-/// ```
 /// <<
 ///   /Type /Catalog
 ///   /Pages 2 0 R
 ///   /ViewerPreferences << /DisplayDocTitle true >>
 /// >>
-/// ```
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct Dictionary {
-    pub records: BTreeMap<String, Object>,
+    records: BTreeMap<String, Object>,
 }
 
-impl Dictionary {
-    /// Retrieves a reference to an object associated with the given key.
-    ///
-    /// The key should be a PDF name without the leading '/' character,
-    /// as the internal storage normalizes names by removing the prefix.
-    ///
-    /// # Arguments
-    /// * `key` - The dictionary key to look up (without leading '/')
-    ///
-    /// # Returns
-    /// - `Some(&Object)` if the key exists in the dictionary
-    /// - `None` if the key is not present
-    ///
-    /// # Example
-    /// ```
-    /// let dict = Dictionary { ... };
-    /// if let Some(obj) = dict.get("Type") {
-    ///     // Handle the object
-    /// }
-    /// ```
-    pub fn get(&self, key: &str) -> Option<&Object> {
-        self.records.get(key)
+impl<K: std::string::ToString> From<Vec<(K, Object)>> for Dictionary {
+    fn from(value: Vec<(K, Object)>) -> Self {
+        let value = value.into_iter().map(|(key, val)| (key.to_string(), val));
+
+        Self {
+            records: BTreeMap::from_iter(value),
+        }
     }
 }
 
-impl<const N: usize> From<[(String, Object); N]> for Dictionary {
-    fn from(value: [(String, Object); N]) -> Self {
+impl<K: std::string::ToString, const N: usize> From<[(K, Object); N]> for Dictionary {
+    fn from(value: [(K, Object); N]) -> Self {
+        let value = value.map(|(key, val)| (key.to_string(), val));
+
         Self {
             records: BTreeMap::from(value),
         }
+    }
+}
+
+impl std::ops::Deref for Dictionary {
+    type Target = BTreeMap<String, Object>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.records
     }
 }

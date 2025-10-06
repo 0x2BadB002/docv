@@ -1,4 +1,4 @@
-use snafu::{ResultExt, Snafu};
+use snafu::{ResultExt, Snafu, ensure};
 
 use crate::types::Object;
 
@@ -6,6 +6,17 @@ use crate::types::Object;
 pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
 
+/// Represents a file identifier hash used in PDF cross-reference streams.
+///
+/// In PDF files, the trailer contains a file identifier hash that uniquely identifies
+/// the file. This hash is typically stored as an array of two byte strings:
+/// - The first string (initial) is a permanent identifier based on the file's contents
+///   at creation time
+/// - The second string (current) is a changing identifier based on the file's current
+///   contents
+///
+/// This structure is used to parse and represent these identifier hashes from
+/// PDF objects.
 #[derive(Debug, Clone)]
 pub struct Hash {
     initial: Vec<u8>,
@@ -14,27 +25,24 @@ pub struct Hash {
 
 impl Hash {
     pub fn from_object(object: &Object) -> Result<Self> {
-        let array = object
-            .as_array()
-            .generic()
-            .context(error::InvalidArraySnafu)?;
+        let array = object.as_array().generic().context(error::Array)?;
 
-        if array.len() != 2 {
-            return Err(error::Error::InvalidArraySize {
-                expected: 2,
-                got: array.len(),
+        ensure!(
+            array.len() == 2,
+            error::InvalidArraySize {
+                expected: 2usize,
+                got: array.len()
             }
-            .into());
-        }
+        );
 
         let initial = array[0]
             .as_string()
-            .context(error::InvalidObjectSnafu)?
+            .context(error::Object)?
             .as_bytes()
             .to_vec();
         let current = array[1]
             .as_string()
-            .context(error::InvalidObjectSnafu)?
+            .context(error::Object)?
             .as_bytes()
             .to_vec();
 
@@ -44,23 +52,9 @@ impl Hash {
 
 impl std::fmt::Display for Hash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut initial_hex = String::with_capacity(self.initial.len() * 2 + 2);
-        for (i, el) in self.initial.iter().enumerate() {
-            if i != 0 && i != 32 && i % 8 == 0 {
-                initial_hex.push('-');
-            }
+        let initial_hex: String = self.initial.iter().map(|b| format!("{:02x}", b)).collect();
 
-            initial_hex += &format!("{el:#04x}")[2..];
-        }
-
-        let mut current_hex = String::with_capacity(self.initial.len() * 2 + 2);
-        for (i, el) in self.current.iter().enumerate() {
-            if i != 0 && i != 32 && i % 8 == 0 {
-                current_hex.push('-');
-            }
-
-            current_hex += &format!("{el:#04x}")[2..];
-        }
+        let current_hex: String = self.current.iter().map(|b| format!("{:02x}", b)).collect();
 
         write!(f, "{}:{}", initial_hex, current_hex)
     }
@@ -70,13 +64,13 @@ mod error {
     use snafu::Snafu;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Object conversion error"))]
-        InvalidObject { source: crate::types::ObjectError },
+        Object { source: crate::types::object::Error },
 
         #[snafu(display("Array conversion error"))]
-        InvalidArray { source: crate::types::array::Error },
+        Array { source: crate::types::array::Error },
 
         #[snafu(display("Wrong array size. Expected = {expected}; Got = {got}"))]
         InvalidArraySize { expected: usize, got: usize },

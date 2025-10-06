@@ -28,30 +28,28 @@ pub struct Document {
 
 impl Document {
     pub fn from_path(path: &PathBuf) -> Result<Self> {
-        let file =
-            File::open(path).with_context(|_| error::OpenFileSnafu { path: path.clone() })?;
+        let file = File::open(path).with_context(|_| error::OpenFile { path: path.clone() })?;
 
-        let file_metadata = file.metadata().context(error::MetadataSnafu)?;
+        let file_metadata = file.metadata().context(error::Metadata)?;
 
-        let (mut objects, metadata) = Objects::from_file(file).context(error::ObjectsSnafu)?;
+        let (mut objects, metadata) = Objects::from_file(file).context(error::Objects)?;
 
-        let root_object =
-            objects
-                .get_object(&metadata.root_id)
-                .with_context(|_| error::ObjectSnafu {
-                    object: metadata.root_id,
-                })?;
+        let root_object = objects
+            .get_object(&metadata.root_id)
+            .context(error::Object {
+                object: metadata.root_id,
+            })?;
 
-        let root = Root::from_object(root_object).context(error::RootSnafu)?;
+        let root = Root::from_object(root_object).context(error::Root)?;
 
         let info = metadata
             .info_id
             .map(|object| -> Result<Info> {
                 let object = objects
                     .get_object(&object)
-                    .with_context(|_| error::ObjectSnafu { object })?;
+                    .context(error::Object { object })?;
 
-                Ok(Info::from_object(object).context(error::InfoSnafu)?)
+                Ok(Info::from_object(object).context(error::Info)?)
             })
             .transpose()?;
 
@@ -86,15 +84,13 @@ impl Document {
         let pages = self
             .objects
             .get_object(&self.root.pages)
-            .with_context(|_| error::ObjectSnafu {
-                object: self.root.pages.clone(),
+            .context(error::Object {
+                object: self.root.pages,
             })?;
 
-        let tree_root = pages
-            .as_dictionary()
-            .context(error::InvalidObjectTypeSnafu)?;
+        let tree_root = pages.as_dictionary().context(error::InvalidObjectType)?;
 
-        let pages = Pages::new(tree_root, &self.objects).context(error::PagesSnafu)?;
+        let pages = Pages::new(tree_root, &self.objects).context(error::Pages)?;
 
         Ok(pages)
     }
@@ -108,7 +104,7 @@ mod error {
     use crate::types::IndirectReference;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Failed to open file: {}", path.display()))]
         OpenFile {
@@ -129,7 +125,7 @@ mod error {
         },
 
         #[snafu(display("Invalid object type"))]
-        InvalidObjectType { source: crate::types::ObjectError },
+        InvalidObjectType { source: crate::types::object::Error },
 
         #[snafu(display("Failed to read root dictionary"))]
         Root {

@@ -25,7 +25,7 @@ use crate::{
 /// between the dictionary and `stream` keyword.
 ///
 /// # Example
-/// ```
+/// ```text
 /// <<
 ///     /Length 25
 ///     /Filter /ASCIIHexDecode
@@ -79,7 +79,6 @@ pub fn stream(input: &[u8]) -> IResult<&[u8], Stream> {
 mod tests {
     use super::*;
     use crate::types::{Dictionary, Numeric, Object};
-    use std::collections::BTreeMap;
 
     #[test]
     fn test_stream_parser() {
@@ -99,9 +98,7 @@ mod tests {
                 name: "valid minimal stream",
                 input: b"<<>>stream\nendstream",
                 expected: true,
-                expected_dict: Some(Dictionary {
-                    records: BTreeMap::new(),
-                }),
+                expected_dict: Some(Dictionary::default()),
                 expected_content: Some(vec![]),
                 expected_remainder: Some(b""),
             },
@@ -110,7 +107,7 @@ mod tests {
                 input: b"<< /Length 5 >>stream\nhello\nendstream",
                 expected: true,
                 expected_dict: Some(Dictionary::from([(
-                    "Length".to_string(),
+                    "Length",
                     Object::Numeric(Numeric::Integer(5)),
                 )])),
                 expected_content: Some(b"hello".to_vec()),
@@ -121,7 +118,7 @@ mod tests {
                 input: b"<< /Length 5 >>stream\r\nhello\r\nendstream",
                 expected: true,
                 expected_dict: Some(Dictionary::from([(
-                    "Length".to_string(),
+                    "Length",
                     Object::Numeric(Numeric::Integer(5)),
                 )])),
                 expected_content: Some(b"hello".to_vec()),
@@ -132,7 +129,7 @@ mod tests {
                 input: b"<< /Length 5 >> % comment\n\t stream\nhello\r\nendstream",
                 expected: true,
                 expected_dict: Some(Dictionary::from([(
-                    "Length".to_string(),
+                    "Length",
                     Object::Numeric(Numeric::Integer(5)),
                 )])),
                 expected_content: Some(b"hello".to_vec()),
@@ -143,7 +140,7 @@ mod tests {
                 input: b"<< /Length 5 >>stream\nhello\nendstreamrest",
                 expected: true,
                 expected_dict: Some(Dictionary::from([(
-                    "Length".to_string(),
+                    "Length",
                     Object::Numeric(Numeric::Integer(5)),
                 )])),
                 expected_content: Some(b"hello".to_vec()),
@@ -154,7 +151,7 @@ mod tests {
                 input: b"<< /Length 5 >>stream\n\x1A\x3F\nendstreamrest",
                 expected: true,
                 expected_dict: Some(Dictionary::from([(
-                    "Length".to_string(),
+                    "Length",
                     Object::Numeric(Numeric::Integer(5)),
                 )])),
                 expected_content: Some(vec![0x1a, 0x3f]),

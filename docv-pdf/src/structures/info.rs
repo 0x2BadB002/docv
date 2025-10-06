@@ -1,12 +1,16 @@
-use chrono::{DateTime, FixedOffset};
 use snafu::{ResultExt, Snafu};
 
-use crate::types::Object;
+use crate::types::{Object, string::Date};
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
 
+/// Contains the standard document information dictionary from a PDF file.
+///
+/// This struct holds metadata about the PDF document such as title, author,
+/// creation date, and other properties defined in the PDF specification.
+/// It can also store custom key-value pairs not covered by the standard fields.
 #[derive(Debug, Default)]
 pub struct Info {
     pub title: Option<String>,
@@ -15,12 +19,16 @@ pub struct Info {
     pub keywords: Option<String>,
     pub creator: Option<String>,
     pub producer: Option<String>,
-    pub creation_date: Option<DateTime<FixedOffset>>,
-    pub mod_date: Option<DateTime<FixedOffset>>,
+    pub creation_date: Option<Date>,
+    pub mod_date: Option<Date>,
     pub trapped: Trap,
     pub other: Vec<(String, String)>,
 }
 
+/// Indicates whether a PDF document has been trapped.
+///
+/// Trapping is a prepress technique to prevent gaps between colored areas
+/// during the printing process.
 #[derive(Debug, Default)]
 pub enum Trap {
     True,
@@ -37,17 +45,17 @@ impl Info {
             return Ok(result);
         }
 
-        let dictionary = object.as_dictionary().context(error::NotDictionarySnafu)?;
+        let dictionary = object.as_dictionary().context(error::NotDictionary)?;
 
-        for (key, value) in dictionary.records.iter() {
+        for (key, value) in dictionary.iter() {
             match key.as_str() {
                 "Title" => {
                     result.title = Some(
                         value
                             .as_string()
-                            .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                            .with_context(|_| error::InvalidField { field: key.clone() })?
                             .as_str()
-                            .context(error::PdfStringSnafu)?
+                            .context(error::PdfString)?
                             .to_string(),
                     )
                 }
@@ -55,9 +63,9 @@ impl Info {
                     result.author = Some(
                         value
                             .as_string()
-                            .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                            .with_context(|_| error::InvalidField { field: key.clone() })?
                             .as_str()
-                            .context(error::PdfStringSnafu)?
+                            .context(error::PdfString)?
                             .to_string(),
                     )
                 }
@@ -65,9 +73,9 @@ impl Info {
                     result.subject = Some(
                         value
                             .as_string()
-                            .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                            .with_context(|_| error::InvalidField { field: key.clone() })?
                             .as_str()
-                            .context(error::PdfStringSnafu)?
+                            .context(error::PdfString)?
                             .to_string(),
                     )
                 }
@@ -75,9 +83,9 @@ impl Info {
                     result.keywords = Some(
                         value
                             .as_string()
-                            .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                            .with_context(|_| error::InvalidField { field: key.clone() })?
                             .as_str()
-                            .context(error::PdfStringSnafu)?
+                            .context(error::PdfString)?
                             .to_string(),
                     )
                 }
@@ -85,9 +93,9 @@ impl Info {
                     result.creator = Some(
                         value
                             .as_string()
-                            .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                            .with_context(|_| error::InvalidField { field: key.clone() })?
                             .as_str()
-                            .context(error::PdfStringSnafu)?
+                            .context(error::PdfString)?
                             .to_string(),
                     )
                 }
@@ -95,9 +103,9 @@ impl Info {
                     result.producer = Some(
                         value
                             .as_string()
-                            .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                            .with_context(|_| error::InvalidField { field: key.clone() })?
                             .as_str()
-                            .context(error::PdfStringSnafu)?
+                            .context(error::PdfString)?
                             .to_string(),
                     )
                 }
@@ -105,26 +113,26 @@ impl Info {
                     result.creation_date = Some(
                         value
                             .as_string()
-                            .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                            .with_context(|_| error::InvalidField { field: key.clone() })?
                             .to_date()
-                            .context(error::PdfStringSnafu)?,
+                            .context(error::PdfString)?,
                     )
                 }
                 "ModDate" => {
                     result.mod_date = Some(
                         value
                             .as_string()
-                            .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                            .with_context(|_| error::InvalidField { field: key.clone() })?
                             .to_date()
-                            .context(error::PdfStringSnafu)?,
+                            .context(error::PdfString)?,
                     )
                 }
                 "Trapped" => {
                     let value = value
                         .as_string()
-                        .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                        .with_context(|_| error::InvalidField { field: key.clone() })?
                         .as_str()
-                        .context(error::PdfStringSnafu)?;
+                        .context(error::PdfString)?;
 
                     result.trapped = match value {
                         "True" => Trap::True,
@@ -142,9 +150,9 @@ impl Info {
                     key.to_string(),
                     value
                         .as_string()
-                        .with_context(|_| error::InvalidFieldSnafu { field: key.clone() })?
+                        .with_context(|_| error::InvalidField { field: key.clone() })?
                         .as_str()
-                        .context(error::PdfStringSnafu)?
+                        .context(error::PdfString)?
                         .to_string(),
                 )),
             }
@@ -172,21 +180,21 @@ mod error {
     use snafu::Snafu;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Parsed object is not dictionary"))]
-        NotDictionary { source: crate::types::ObjectError },
+        NotDictionary { source: crate::types::object::Error },
 
         #[snafu(display("Wrong field {field} data format"))]
         InvalidField {
             field: String,
-            source: crate::types::ObjectError,
+            source: crate::types::object::Error,
         },
 
         #[snafu(display("Unexpected Trapping value encountered. Value = {value}"))]
         UnexpectedTrapValue { value: String },
 
         #[snafu(display("Error while working with pdf string"))]
-        PdfString { source: crate::types::StringError },
+        PdfString { source: crate::types::string::Error },
     }
 }

@@ -68,47 +68,47 @@ pub enum PageMode {
 
 impl Root {
     pub fn from_object(object: Object) -> Result<Self> {
-        let dictionary = object.as_dictionary().context(error::InvalidObjectSnafu)?;
+        let dictionary = object.as_dictionary().context(error::InvalidObject)?;
 
         let version = dictionary
             .get("Version")
             .map(Version::from_object)
             .transpose()
-            .context(error::InvalidVersionSnafu)?;
+            .context(error::InvalidVersion)?;
 
         let pages = dictionary
             .get("Pages")
-            .context(error::PagesNotFoundSnafu)?
+            .context(error::PagesNotFound)?
             .as_indirect_ref()
-            .context(error::InvalidTypeSnafu)?;
+            .context(error::InvalidType)?;
 
         let outlines = dictionary
             .get("Outlines")
             .map(|object| object.as_indirect_ref().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu)?;
+            .context(error::InvalidType)?;
 
         let threads = dictionary
             .get("Threads")
             .map(|object| object.as_indirect_ref().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu)?;
+            .context(error::InvalidType)?;
 
         let metadata = dictionary
             .get("Metadata")
             .map(|object| object.as_indirect_ref().cloned())
             .transpose()
-            .context(error::InvalidTypeSnafu)?;
+            .context(error::InvalidType)?;
 
         let needs_rendering = dictionary
             .get("NeedsRendering")
             .map(|object| object.as_bool())
             .transpose()
-            .context(error::InvalidTypeSnafu)?;
+            .context(error::InvalidType)?;
 
         Ok(Self {
             version,
-            pages: pages.clone(),
+            pages: *pages,
             outlines,
             threads,
             metadata,
@@ -123,10 +123,10 @@ mod error {
     use snafu::Snafu;
 
     #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub(super)))]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
         #[snafu(display("Invalid object"))]
-        InvalidObject { source: crate::types::ObjectError },
+        InvalidObject { source: crate::types::object::Error },
 
         #[snafu(display("Invalid version field"))]
         InvalidVersion {
@@ -134,7 +134,7 @@ mod error {
         },
 
         #[snafu(display("Invalid field type"))]
-        InvalidType { source: crate::types::ObjectError },
+        InvalidType { source: crate::types::object::Error },
 
         #[snafu(display("`Pages` field not found"))]
         PagesNotFound,

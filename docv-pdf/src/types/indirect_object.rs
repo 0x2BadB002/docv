@@ -43,10 +43,6 @@ impl IndirectObject {
             object: Arc::new(object),
         }
     }
-
-    pub fn get_object(&self) -> &Object {
-        &self.object
-    }
 }
 
 impl Deref for IndirectObject {

@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use nom::{
     IResult, Parser,
     branch::alt,
@@ -24,12 +22,14 @@ use crate::{
 /// markers between elements.
 ///
 /// # Example
+/// ```text
 /// <<
 ///     /Key1 42
 ///     /Key2 (Text value)
 ///     % This is a comment
 ///     /Key3 [1 2 3]  % Array value
 /// >>
+/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
@@ -49,9 +49,7 @@ pub fn dictionary(input: &[u8]) -> IResult<&[u8], Dictionary> {
         key_value,
         many0(alt((whitespace, comment, eol))),
     ))
-    .map(|res| Dictionary {
-        records: BTreeMap::from_iter(res.iter().cloned()),
-    });
+    .map(Dictionary::from);
 
     delimited(tag("<<"), contents, tag(">>")).parse(input)
 }
@@ -78,7 +76,7 @@ mod tests {
                 name: "valid empty dictionary",
                 input: b"<<>>",
                 expected: true,
-                expected_result: Some(Dictionary::from([])),
+                expected_result: Some(Dictionary::default()),
                 expected_remainder: Some(b""),
             },
             TestCase {

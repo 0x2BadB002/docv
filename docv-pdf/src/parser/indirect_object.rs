@@ -18,9 +18,11 @@ use crate::{
 /// Parses a PDF indirect object from the input.
 ///
 /// # Example
+/// ```text
 /// 12 0 obj
 ///     (Hello, World!)
 /// endobj
+/// ```
 ///
 /// # Arguments
 /// * `input` - Byte slice to parse
@@ -203,12 +205,9 @@ mod tests {
                     actual.gen_id
                 );
                 assert_eq!(
-                    *actual.get_object(),
-                    *expected_object,
+                    *actual, *expected_object,
                     "Test '{}' failed: expected object: {:?}, got: {:?}",
-                    case.name,
-                    case.expected_object,
-                    *actual.get_object()
+                    case.name, case.expected_object, *actual
                 );
                 assert_eq!(
                     actual_remainder,

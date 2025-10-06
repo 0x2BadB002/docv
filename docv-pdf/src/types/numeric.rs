@@ -17,12 +17,10 @@
 /// - Font metrics and character encoding
 ///
 /// # Examples
-/// ```
 /// 42              // Integer
 /// -17             // Negative integer
 /// 3.14            // Real number
 /// 123.456e-7      // Real number with exponent
-/// ```
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Numeric {
     /// An integer value stored as a 64-bit signed integer.
