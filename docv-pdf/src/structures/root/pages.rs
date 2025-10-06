@@ -12,34 +12,96 @@ type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug)]
 pub struct Pages<'a> {
     root: PagesTreeNode,
-    node: PagesTreeNode,
-    leaf_iter: std::vec::IntoIter<IndirectReference>,
-
-    objects: &'a Objects,
+    stack: Vec<(std::vec::IntoIter<IndirectReference>, InheritableAttributes)>,
+    current_iter: std::vec::IntoIter<IndirectReference>,
+    current_inheritable: InheritableAttributes,
+    last_error: Option<Error>,
+    objects: &'a mut Objects,
 }
 
 impl<'a> Pages<'a> {
-    pub fn new(root: &Dictionary, objects: &'a Objects) -> Result<Self> {
+    pub fn new(root: &Dictionary, objects: &'a mut Objects) -> Result<Self> {
         let tree = PagesTreeNode::from_dictionary(root)?;
 
         Ok(Self {
             root: tree.clone(),
-            leaf_iter: tree.kids.clone().into_iter(),
-            node: tree,
+            stack: Vec::new(),
+            current_iter: tree.kids.into_iter(),
+            current_inheritable: InheritableAttributes::default(),
+            last_error: None,
             objects,
         })
+    }
+
+    fn compute_next(&mut self) -> Result<Option<Page>> {
+        loop {
+            if let Some(kid_ref) = self.current_iter.next() {
+                let kid_obj = self
+                    .objects
+                    .get_object(&kid_ref)
+                    .context(error::ObjectNotFound { reference: kid_ref })?;
+                let dictionary = kid_obj
+                    .as_dictionary()
+                    .context(error::InvalidType { field: "Kids" })?;
+                let node_type = dictionary
+                    .get("Type")
+                    .and_then(|obj| obj.as_name().ok())
+                    .context(error::FieldNotFound { field: "Type" })?;
+
+                match node_type {
+                    "Page" => {
+                        return Ok(Some(Page::from_dictionary(
+                            dictionary,
+                            &self.current_inheritable,
+                            self.objects,
+                        )?));
+                    }
+                    "Pages" => {
+                        let new_node = PagesTreeNode::from_dictionary(dictionary)?;
+                        let mut new_inheritable = self.current_inheritable.clone();
+                        new_inheritable.read(dictionary)?;
+
+                        let old_iter =
+                            std::mem::replace(&mut self.current_iter, new_node.kids.into_iter());
+                        let old_inheritable =
+                            std::mem::replace(&mut self.current_inheritable, new_inheritable);
+
+                        self.stack.push((old_iter, old_inheritable));
+                    }
+                    _ => {
+                        return Err(error::Error::UnexpectedNodeType {
+                            got: node_type.to_string(),
+                        }
+                        .into());
+                    }
+                }
+            } else if let Some((parent_iter, parent_inheritable)) = self.stack.pop() {
+                self.current_iter = parent_iter;
+                self.current_inheritable = parent_inheritable;
+            } else {
+                return Ok(None);
+            }
+        }
     }
 }
 
 impl<'a> std::iter::Iterator for Pages<'a> {
-    type Item = Page;
+    type Item = Result<Page>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        None
+        match self.compute_next() {
+            Ok(Some(val)) => Some(Ok(val)),
+            Ok(None) => None,
+            Err(e) => Some(Err(e)),
+        }
     }
 
     fn count(self) -> usize {
         self.root.leaf_count
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (2, Some(self.root.leaf_count))
     }
 }
 
@@ -109,18 +171,17 @@ impl Page {
                     .ok()
                     .context(error::FieldNotFound { field: "Contents" })?;
 
-                match object {
-                    Object::Stream(stream) => vec![stream],
-                    Object::Array(array) => array
-                        .iter()
-                        .map(|object| object.as_stream().cloned())
-                        .collect::<std::result::Result<Vec<_>, _>>()
-                        .context(error::InvalidType { field: "Contents" })?,
-                    _ => todo!(),
-                }
+                object
+                    .as_stream()
+                    .map(|stream| vec![stream.clone()])
+                    .context(error::InvalidType { field: "Contents" })
+                    .or(object
+                        .as_array()
+                        .of(|obj| obj.as_stream().cloned())
+                        .context(error::InvalidArray { field: "Contents" }))?
             }
             _ => {
-                todo!()
+                todo!("Alien type")
             }
         };
 
@@ -430,6 +491,8 @@ impl InheritableAttributes {
 mod error {
     use snafu::Snafu;
 
+    use crate::types::IndirectReference;
+
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
@@ -453,5 +516,14 @@ mod error {
             field: &'static str,
             source: crate::types::string::Error,
         },
+
+        #[snafu(display("Object with reference {reference} not found"))]
+        ObjectNotFound {
+            reference: IndirectReference,
+            source: crate::objects::Error,
+        },
+
+        #[snafu(display("Unexpected node type. Got = {got}. Expected `Page` or `Pages`]"))]
+        UnexpectedNodeType { got: String },
     }
 }

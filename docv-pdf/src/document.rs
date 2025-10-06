@@ -90,7 +90,7 @@ impl Document {
 
         let tree_root = pages.as_dictionary().context(error::InvalidObjectType)?;
 
-        let pages = Pages::new(tree_root, &self.objects).context(error::Pages)?;
+        let pages = Pages::new(tree_root, &mut self.objects).context(error::Pages)?;
 
         Ok(pages)
     }
@@ -167,8 +167,21 @@ mod test {
             let entry = example.whatever_context("Failed to directory entry")?;
             let path = entry.path();
 
-            let _document = Document::from_path(&path)
+            let mut document = Document::from_path(&path)
                 .with_whatever_context(|_| format!("Failed to open file {}", path.display()))?;
+
+            let count = document
+                .pages()
+                .whatever_context("Failed to get count")?
+                .count();
+
+            let pages = document
+                .pages()
+                .whatever_context("Failed to create `Pages` iterator")?;
+
+            let result = pages.collect::<Vec<_>>();
+
+            assert_eq!(result.len(), count);
         }
         Ok(())
     }
