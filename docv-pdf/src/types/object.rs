@@ -1,10 +1,14 @@
 use core::str;
+use std::borrow::Cow;
 
 use snafu::{OptionExt, Snafu};
 
-use crate::types::{
-    Array, Dictionary, IndirectObject, IndirectReference, Numeric, PdfString, Stream,
-    array::ArrayBuilder,
+use crate::{
+    objects::Objects,
+    types::{
+        Array, Dictionary, IndirectObject, IndirectReference, Numeric, PdfString, Stream,
+        array::ArrayBuilder,
+    },
 };
 
 #[derive(Debug, Snafu)]
@@ -75,6 +79,15 @@ impl Object {
         matches!(self, Object::Null)
     }
 
+    pub fn direct<'a>(&'a self, objects: &mut Objects) -> Cow<'a, Object> {
+        match self {
+            Object::IndirectReference(obj_ref) => objects
+                .get_object(obj_ref)
+                .map_or(Cow::Borrowed(self), Cow::Owned),
+            _ => Cow::Borrowed(self),
+        }
+    }
+
     /// Attempts to convert the object to an integer of type `T`.
     ///
     /// Only succeeds if the object is a `Numeric::Integer` and the value
@@ -108,10 +121,9 @@ impl Object {
         }
     }
 
-    /// Attempts to convert the object to a floating-point number of type `T`.
+    /// Attempts to convert the object to a floating-point number of type `f64`.
     ///
-    /// Only succeeds if the object is a `Numeric::Real` and the value
-    /// can be converted to the target type `T`.
+    /// Only succeeds if the object is a `Numeric`.
     ///
     /// # Arguments
     /// * `self` - Reference to the object

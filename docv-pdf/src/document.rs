@@ -27,41 +27,8 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn from_path(path: &PathBuf) -> Result<Self> {
-        let file = File::open(path).with_context(|_| error::OpenFile { path: path.clone() })?;
-
-        let file_metadata = file.metadata().context(error::Metadata)?;
-
-        let (mut objects, metadata) = Objects::from_file(file).context(error::Objects)?;
-
-        let root_object = objects
-            .get_object(&metadata.root_id)
-            .context(error::Object {
-                object: metadata.root_id,
-            })?;
-
-        let root = Root::from_object(root_object).context(error::Root)?;
-
-        let info = metadata
-            .info_id
-            .map(|object| -> Result<Info> {
-                let object = objects
-                    .get_object(&object)
-                    .context(error::Object { object })?;
-
-                Ok(Info::from_object(object).context(error::Info)?)
-            })
-            .transpose()?;
-
-        Ok(Self {
-            root,
-            info: info.unwrap_or_default(),
-            objects,
-
-            size: file_metadata.len(),
-            version: metadata.version,
-            hash: metadata.hash,
-        })
+    pub fn from_path(path: &PathBuf) -> std::result::Result<Self, crate::Error> {
+        Ok(read_document_from_file(path).context(crate::error::Document)?)
     }
 
     pub fn info(&self) -> &Info {
@@ -80,20 +47,46 @@ impl Document {
         self.hash.as_ref()
     }
 
-    pub fn pages<'a>(&'a mut self) -> Result<Pages<'a>> {
-        let pages = self
-            .objects
-            .get_object(&self.root.pages)
-            .context(error::Object {
-                object: self.root.pages,
-            })?;
-
-        let tree_root = pages.as_dictionary().context(error::InvalidObjectType)?;
-
-        let pages = Pages::new(tree_root, &mut self.objects).context(error::Pages)?;
-
-        Ok(pages)
+    pub fn pages<'a>(&'a mut self) -> Pages<'a> {
+        Pages::new(&self.root.pages, &mut self.objects)
     }
+}
+
+fn read_document_from_file(path: &PathBuf) -> Result<Document> {
+    let file = File::open(path).with_context(|_| error::OpenFile { path: path.clone() })?;
+
+    let file_metadata = file.metadata().context(error::Metadata)?;
+
+    let (mut objects, metadata) = Objects::from_file(file).context(error::Objects)?;
+
+    let root_object = objects
+        .get_object(&metadata.root_id)
+        .context(error::Object {
+            object: metadata.root_id,
+        })?;
+
+    let root = Root::from_object(root_object, &mut objects).context(error::Root)?;
+
+    let info = metadata
+        .info_id
+        .map(|object| -> Result<Info> {
+            let object = objects
+                .get_object(&object)
+                .context(error::Object { object })?;
+
+            Ok(Info::from_object(object).context(error::Info)?)
+        })
+        .transpose()?;
+
+    Ok(Document {
+        root,
+        info: info.unwrap_or_default(),
+        objects,
+
+        size: file_metadata.len(),
+        version: metadata.version,
+        hash: metadata.hash,
+    })
 }
 
 mod error {
@@ -136,11 +129,6 @@ mod error {
         Info {
             source: crate::structures::info::Error,
         },
-
-        #[snafu(display("Failed to read page tree"))]
-        Pages {
-            source: crate::structures::root::pages::Error,
-        },
     }
 }
 
@@ -167,19 +155,17 @@ mod test {
             let entry = example.whatever_context("Failed to directory entry")?;
             let path = entry.path();
 
-            let mut document = Document::from_path(&path)
+            let mut document = Document::read_file(&path)
                 .with_whatever_context(|_| format!("Failed to open file {}", path.display()))?;
 
-            let count = document
-                .pages()
-                .whatever_context("Failed to get count")?
-                .count();
+            let count = document.pages().count();
 
-            let pages = document
+            let result = document
                 .pages()
-                .whatever_context("Failed to create `Pages` iterator")?;
-
-            let result = pages.collect::<Vec<_>>();
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .with_whatever_context(|_| {
+                    format!("Failed to iterate over pages for file {}", path.display())
+                })?;
 
             assert_eq!(result.len(), count);
         }

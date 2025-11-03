@@ -4,7 +4,8 @@ pub mod pages;
 pub mod version;
 
 use crate::{
-    structures::root::version::Version,
+    objects::Objects,
+    structures::root::{pages::PagesTreeNode, version::Version},
     types::{IndirectReference, Object},
 };
 
@@ -12,11 +13,11 @@ use crate::{
 pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Root {
     pub version: Option<Version>,
     pub extensions: Option<Object>,
-    pub pages: IndirectReference,
+    pub pages: PagesTreeNode,
     pub page_labels: Option<Object>,
     pub names: Option<Object>,
     pub dests: Option<Object>,
@@ -67,7 +68,7 @@ pub enum PageMode {
 }
 
 impl Root {
-    pub fn from_object(object: Object) -> Result<Self> {
+    pub fn from_object(object: Object, objects: &mut Objects) -> Result<Self> {
         let dictionary = object.as_dictionary().context(error::InvalidObject)?;
 
         let version = dictionary
@@ -76,11 +77,16 @@ impl Root {
             .transpose()
             .context(error::InvalidVersion)?;
 
-        let pages = dictionary
-            .get("Pages")
-            .context(error::PagesNotFound)?
-            .as_indirect_ref()
-            .context(error::InvalidType)?;
+        let pages = PagesTreeNode::from_dictionary(
+            dictionary
+                .get("Pages")
+                .context(error::PagesNotFound)?
+                .direct(objects)
+                .as_dictionary()
+                .context(error::InvalidType)?,
+            None,
+        )
+        .context(error::FailedCreatePages)?;
 
         let outlines = dictionary
             .get("Outlines")
@@ -106,15 +112,77 @@ impl Root {
             .transpose()
             .context(error::InvalidType)?;
 
+        let page_layout = dictionary
+            .get("PageLayout")
+            .map(|obj| {
+                use PageLayout::*;
+
+                let name = obj.as_name().context(error::InvalidType)?;
+                match name {
+                    "SinglePage" => Ok(SinglePage),
+                    "OneColumn" => Ok(OneColumn),
+                    "TwoColumnLeft" => Ok(TwoColumnLeft),
+                    "TwoColumnRight" => Ok(TwoColumnRight),
+                    "TwoPageLeft" => Ok(TwoPageLeft),
+                    "TwoPageRight" => Ok(TwoPageRight),
+                    _ => Err(error::Error::UnexpectedPageLayout {
+                        value: name.to_string(),
+                    }),
+                }
+            })
+            .transpose()?
+            .unwrap_or_default();
+
+        let page_mode = dictionary
+            .get("PageMode")
+            .map(|obj| {
+                use PageMode::*;
+
+                let name = obj.as_name().context(error::InvalidType)?;
+                match name {
+                    "UseNone" => Ok(UseNone),
+                    "UseOutlines" => Ok(UseOutlines),
+                    "UseThumbs" => Ok(UseThumbs),
+                    "FullScreen" => Ok(FullScreen),
+                    "UseOC" => Ok(UseOC),
+                    "UseAttachments" => Ok(UseAttachments),
+                    _ => Err(error::Error::UnexpectedPageLayout {
+                        value: name.to_string(),
+                    }),
+                }
+            })
+            .transpose()?
+            .unwrap_or_default();
+
         Ok(Self {
             version,
-            pages: *pages,
+            pages,
             outlines,
             threads,
             metadata,
             needs_rendering,
-
-            ..Default::default()
+            extensions: None,
+            page_labels: None,
+            names: None,
+            dests: None,
+            viewer_preferences: None,
+            page_layout,
+            page_mode,
+            open_action: None,
+            aa: None,
+            uri: None,
+            acro_form: None,
+            struct_tree_root: None,
+            mark_info: None,
+            lang: None,
+            spider_info: None,
+            output_intents: None,
+            piece_info: None,
+            oc_properities: None,
+            perms: None,
+            legal: None,
+            requirements: None,
+            collection: None,
         })
     }
 }
@@ -138,5 +206,13 @@ mod error {
 
         #[snafu(display("`Pages` field not found"))]
         PagesNotFound,
+
+        #[snafu(display("Failed to instantate `Pages` struct"))]
+        FailedCreatePages {
+            source: crate::structures::root::pages::Error,
+        },
+
+        #[snafu(display("Unexpected value for `PageLayout`. Got = `{value}`"))]
+        UnexpectedPageLayout { value: String },
     }
 }

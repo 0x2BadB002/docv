@@ -6,7 +6,8 @@ use crate::{
 };
 
 #[derive(Debug, Snafu)]
-pub struct Error(error::Error);
+#[snafu(source(from(error::Error, Box::new)))]
+pub struct Error(Box<error::Error>);
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
@@ -15,22 +16,18 @@ pub struct Pages<'a> {
     stack: Vec<(std::vec::IntoIter<IndirectReference>, InheritableAttributes)>,
     current_iter: std::vec::IntoIter<IndirectReference>,
     current_inheritable: InheritableAttributes,
-    last_error: Option<Error>,
     objects: &'a mut Objects,
 }
 
 impl<'a> Pages<'a> {
-    pub fn new(root: &Dictionary, objects: &'a mut Objects) -> Result<Self> {
-        let tree = PagesTreeNode::from_dictionary(root)?;
-
-        Ok(Self {
-            root: tree.clone(),
+    pub fn new(pages: &PagesTreeNode, objects: &'a mut Objects) -> Self {
+        Self {
+            root: pages.clone(),
             stack: Vec::new(),
-            current_iter: tree.kids.into_iter(),
+            current_iter: pages.kids.clone().into_iter(),
             current_inheritable: InheritableAttributes::default(),
-            last_error: None,
             objects,
-        })
+        }
     }
 
     fn compute_next(&mut self) -> Result<Option<Page>> {
@@ -39,7 +36,10 @@ impl<'a> Pages<'a> {
                 let kid_obj = self
                     .objects
                     .get_object(&kid_ref)
-                    .context(error::ObjectNotFound { reference: kid_ref })?;
+                    .context(error::ObjectNotFound {
+                        reference: kid_ref,
+                        field: "Pages",
+                    })?;
                 let dictionary = kid_obj
                     .as_dictionary()
                     .context(error::InvalidType { field: "Kids" })?;
@@ -57,14 +57,19 @@ impl<'a> Pages<'a> {
                         )?));
                     }
                     "Pages" => {
-                        let new_node = PagesTreeNode::from_dictionary(dictionary)?;
-                        let mut new_inheritable = self.current_inheritable.clone();
-                        new_inheritable.read(dictionary)?;
+                        let new_node = PagesTreeNode::from_dictionary(
+                            dictionary,
+                            Some(self.current_inheritable.clone()),
+                        )?;
+
+                        dbg!(&new_node);
 
                         let old_iter =
                             std::mem::replace(&mut self.current_iter, new_node.kids.into_iter());
-                        let old_inheritable =
-                            std::mem::replace(&mut self.current_inheritable, new_inheritable);
+                        let old_inheritable = std::mem::replace(
+                            &mut self.current_inheritable,
+                            new_node.inheritable_attributes,
+                        );
 
                         self.stack.push((old_iter, old_inheritable));
                     }
@@ -86,13 +91,13 @@ impl<'a> Pages<'a> {
 }
 
 impl<'a> std::iter::Iterator for Pages<'a> {
-    type Item = Result<Page>;
+    type Item = std::result::Result<Page, crate::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.compute_next() {
+        match self.compute_next().context(crate::error::Pages) {
             Ok(Some(val)) => Some(Ok(val)),
             Ok(None) => None,
-            Err(e) => Some(Err(e)),
+            Err(err) => Some(Err(err.into())),
         }
     }
 
@@ -101,7 +106,7 @@ impl<'a> std::iter::Iterator for Pages<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (2, Some(self.root.leaf_count))
+        (1, Some(self.root.leaf_count))
     }
 }
 
@@ -154,40 +159,31 @@ impl Page {
         inheritable_attrs: &InheritableAttributes,
         objects: &mut Objects,
     ) -> Result<Self> {
+        dbg!(dictionary);
+
         let contents = dictionary
             .get("Contents")
-            .context(error::FieldNotFound { field: "Contents" })?;
+            .context(error::FieldNotFound { field: "Contents" })?
+            .direct(objects);
 
-        let contents = match contents {
-            Object::Stream(stream) => vec![stream.clone()],
-            Object::Array(array) => array
-                .iter()
-                .map(|object| object.as_stream().cloned())
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .context(error::InvalidType { field: "Contents" })?,
-            Object::IndirectReference(object_ref) => {
-                let object = objects
-                    .get_object(object_ref)
-                    .ok()
-                    .context(error::FieldNotFound { field: "Contents" })?;
-
-                object
-                    .as_stream()
-                    .map(|stream| vec![stream.clone()])
-                    .context(error::InvalidType { field: "Contents" })
-                    .or(object
-                        .as_array()
-                        .of(|obj| obj.as_stream().cloned())
-                        .context(error::InvalidArray { field: "Contents" }))?
-            }
+        let contents = match *contents {
+            Object::Stream(_) => vec![contents.as_stream().cloned().unwrap()],
+            Object::Array(_) => contents
+                .as_array()
+                .with_objects(objects)
+                .of(|obj| obj.as_stream().cloned())
+                .context(error::InvalidArray { field: "Contents" })?,
             _ => {
-                todo!("Alien type")
+                return Err(error::Error::FailedResolveContents {
+                    object: contents.into_owned(),
+                }
+                .into());
             }
         };
 
         let resources = dictionary
             .get("Resources")
-            .map(|object| object.as_dictionary().cloned())
+            .map(|object| object.direct(objects).as_dictionary().cloned())
             .transpose()
             .context(error::InvalidType { field: "Resources" })?
             .or_else(|| inheritable_attrs.resources.clone())
@@ -418,14 +414,18 @@ impl Page {
 }
 
 #[derive(Debug, Clone)]
-struct PagesTreeNode {
-    parent: Option<IndirectReference>,
+pub struct PagesTreeNode {
+    _parent: Option<IndirectReference>,
     leaf_count: usize,
     kids: Vec<IndirectReference>,
+    inheritable_attributes: InheritableAttributes,
 }
 
 impl PagesTreeNode {
-    fn from_dictionary(dictionary: &Dictionary) -> Result<Self> {
+    pub fn from_dictionary(
+        dictionary: &Dictionary,
+        inheritable_attributes: Option<InheritableAttributes>,
+    ) -> Result<Self> {
         let kids = dictionary
             .get("Kids")
             .context(error::FieldNotFound { field: "Kids" })?
@@ -439,19 +439,20 @@ impl PagesTreeNode {
             .as_integer()
             .context(error::InvalidType { field: "Count" })?;
 
-        let mut inheritable_attrs = InheritableAttributes::default();
-        inheritable_attrs.read(dictionary)?;
+        let mut inheritable_attributes = inheritable_attributes.unwrap_or_default();
+        inheritable_attributes.read(dictionary)?;
 
         Ok(Self {
-            parent: None,
+            _parent: None,
             leaf_count: count,
             kids,
+            inheritable_attributes,
         })
     }
 }
 
 #[derive(Debug, Default, Clone)]
-struct InheritableAttributes {
+pub struct InheritableAttributes {
     resources: Option<Dictionary>,
     media_box: Option<Rectangle>,
     crop_box: Option<Rectangle>,
@@ -491,39 +492,43 @@ impl InheritableAttributes {
 mod error {
     use snafu::Snafu;
 
-    use crate::types::IndirectReference;
+    use crate::types::{IndirectReference, Object};
 
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub(super)), context(suffix(false)))]
     pub(super) enum Error {
-        #[snafu(display("Required field {field} not found"))]
+        #[snafu(display("Required field `{field}` not found"))]
         FieldNotFound { field: &'static str },
 
-        #[snafu(display("Invalid object type for field {field}"))]
+        #[snafu(display("Invalid object type for field `{field}`"))]
         InvalidType {
             field: &'static str,
             source: crate::types::object::Error,
         },
 
-        #[snafu(display("Invalid array data for field {field}"))]
+        #[snafu(display("Invalid array data for field `{field}`"))]
         InvalidArray {
             field: &'static str,
             source: crate::types::array::Error,
         },
 
-        #[snafu(display("Invalid date data for field {field}"))]
+        #[snafu(display("Invalid date data for field `{field}`"))]
         InvalidDate {
             field: &'static str,
             source: crate::types::string::Error,
         },
 
-        #[snafu(display("Object with reference {reference} not found"))]
+        #[snafu(display("Object with reference `{reference}` for field `{field}` not found"))]
         ObjectNotFound {
             reference: IndirectReference,
+            field: &'static str,
             source: crate::objects::Error,
         },
 
-        #[snafu(display("Unexpected node type. Got = {got}. Expected `Page` or `Pages`]"))]
+        #[snafu(display("Unexpected node type. Got = `{got}`. Expected `Page` or `Pages`]"))]
         UnexpectedNodeType { got: String },
+
+        #[snafu(display("Failed to resolve contents: unexpected object `{object:?}`"))]
+        FailedResolveContents { object: Object },
     }
 }

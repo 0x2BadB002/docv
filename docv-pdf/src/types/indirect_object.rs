@@ -1,5 +1,3 @@
-use std::{fmt::Display, ops::Deref, sync::Arc};
-
 use crate::types::object::Object;
 
 /// Represents a parsed PDF indirect object.
@@ -17,7 +15,7 @@ use crate::types::object::Object;
 pub struct IndirectObject {
     pub id: usize,
     pub gen_id: usize,
-    object: Arc<Object>,
+    object: Box<Object>,
 }
 
 /// Represents a parsed PDF indirect object reference.
@@ -40,12 +38,12 @@ impl IndirectObject {
         Self {
             id,
             gen_id,
-            object: Arc::new(object),
+            object: Box::new(object),
         }
     }
 }
 
-impl Deref for IndirectObject {
+impl std::ops::Deref for IndirectObject {
     type Target = Object;
 
     fn deref(&self) -> &Self::Target {
@@ -53,7 +51,7 @@ impl Deref for IndirectObject {
     }
 }
 
-impl Display for IndirectReference {
+impl std::fmt::Display for IndirectReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} R", self.id, self.gen_id)
     }
