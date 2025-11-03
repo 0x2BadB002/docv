@@ -1,4 +1,7 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use iced::{
     Alignment, Element, Length, Subscription, Task, Theme,
@@ -7,12 +10,12 @@ use iced::{
 };
 
 use crate::{Error, Result};
-use docv_pdf::Document;
+use docv_pdf::{Document, Page};
 
 mod cmdline;
 
 #[derive(Debug)]
-enum Message {
+pub enum Message {
     CmdLine(cmdline::Message),
 
     OpenFile(PathBuf),
@@ -21,13 +24,16 @@ enum Message {
     ShowErrors,
 
     ShowCmdline,
-    FileOpened(Arc<Document>),
+    FileOpened(Arc<Mutex<Document>>),
     ErrorOccurred(Error),
+    PagesRead(Vec<Page>),
+    PagesCount(usize),
 }
 
 #[derive(Default, Debug)]
 struct App {
-    file: Option<Arc<Document>>,
+    file: Option<Arc<Mutex<Document>>>,
+    pages: Option<Vec<Page>>,
     page_count: usize,
     error: Option<Arc<Error>>,
     prev_error: Option<Arc<Error>>,
@@ -75,17 +81,43 @@ impl App {
 
                 self.cmdline.show().map(Message::CmdLine)
             }
-            Message::FileOpened(mut file) => {
+            Message::FileOpened(file) => {
                 self.error = None;
                 self.error_backtrace = false;
 
-                self.page_count = Arc::<Document>::get_mut(&mut file)
-                    .unwrap()
-                    .pages()
-                    .map(|pages| pages.count())
-                    .unwrap_or(0);
-
                 self.file = Some(file);
+
+                let file1 = self.file.clone().unwrap();
+                let file2 = file1.clone();
+                Task::batch([
+                    Task::perform(
+                        async move {
+                            let mut file = file1.lock().unwrap();
+
+                            file.pages().collect::<std::result::Result<Vec<_>, _>>()
+                        },
+                        |res| match res {
+                            Ok(pages) => Message::PagesRead(pages),
+                            Err(err) => Message::ErrorOccurred(Error::Pdf(err)),
+                        },
+                    ),
+                    Task::perform(
+                        async move {
+                            let mut file = file2.lock().unwrap();
+
+                            file.pages().count()
+                        },
+                        Message::PagesCount,
+                    ),
+                ])
+            }
+            Message::PagesRead(pages) => {
+                self.pages = Some(pages);
+
+                Task::none()
+            }
+            Message::PagesCount(count) => {
+                self.page_count = count;
 
                 Task::none()
             }
@@ -113,6 +145,7 @@ impl App {
             .file
             .as_ref()
             .map(|file| {
+                let file = file.lock().unwrap();
                 let info = file.info();
 
                 container(
@@ -257,8 +290,8 @@ impl App {
     }
 }
 
-async fn read_file(filepath: PathBuf) -> Result<Arc<Document>> {
+async fn read_file(filepath: PathBuf) -> Result<Arc<Mutex<Document>>> {
     let file = Document::from_path(&filepath)?;
 
-    Ok(Arc::new(file))
+    Ok(Arc::new(Mutex::new(file)))
 }

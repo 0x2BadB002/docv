@@ -40,16 +40,16 @@ pub enum Message {
 static INPUT_ID: LazyLock<text_input::Id> = LazyLock::new(text_input::Id::unique);
 
 impl Cmdline {
-    pub fn update(&mut self, message: Message) -> Task<super::Message> {
+    pub fn update(&mut self, message: Message) -> Task<crate::app::Message> {
         match message {
             Message::Action(action) => match action {
-                Action::Quit => Task::done(super::Message::Quit),
-                Action::Open(filepath) => Task::done(super::Message::OpenFile(filepath)),
-                Action::ShowErrorStack => Task::done(super::Message::ShowErrors),
+                Action::Quit => Task::done(crate::app::Message::Quit),
+                Action::Open(filepath) => Task::done(crate::app::Message::OpenFile(filepath)),
+                Action::ShowErrorStack => Task::done(crate::app::Message::ShowErrors),
             },
             Message::OnCommandInput(cmd) => {
                 if cmd.is_empty() {
-                    return Task::done(super::Message::CmdLine(Message::HideCmdline));
+                    return Task::done(crate::app::Message::CmdLine(Message::HideCmdline));
                 }
                 self.cmd = cmd;
 
@@ -59,8 +59,8 @@ impl Cmdline {
                 self.active = false;
 
                 Task::perform(parse_cmd(self.cmd.clone()), |res| match res {
-                    Ok(action) => super::Message::CmdLine(Message::Action(action)),
-                    Err(err) => super::Message::ErrorOccurred(err),
+                    Ok(action) => crate::app::Message::CmdLine(Message::Action(action)),
+                    Err(err) => crate::app::Message::ErrorOccurred(err),
                 })
             }
             Message::HideCmdline => {
