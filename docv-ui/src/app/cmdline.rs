@@ -1,10 +1,8 @@
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
-use iced::keyboard::Key;
-use iced::keyboard::key::Named;
-use iced::widget::{container, row, text_input};
-use iced::{Element, Length, Subscription, Task};
+use iced::widget::{container, text_input};
+use iced::{Element, Length, Task};
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -17,15 +15,14 @@ struct CmdlineParser {}
 #[derive(Default, Debug)]
 pub struct Cmdline {
     cmd: String,
-
-    active: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum Action {
     Quit,
     Open(PathBuf),
-    ShowErrorStack,
+    ShowErrors,
+    ShowInfo,
 }
 
 #[derive(Debug, Clone)]
@@ -33,8 +30,7 @@ pub enum Message {
     Action(Action),
     OnCommandSubmit,
     OnCommandInput(String),
-    HideCmdline,
-    ShowCmdline,
+    FocusInput,
 }
 
 static INPUT_ID: LazyLock<text_input::Id> = LazyLock::new(text_input::Id::unique);
@@ -45,32 +41,24 @@ impl Cmdline {
             Message::Action(action) => match action {
                 Action::Quit => Task::done(crate::app::Message::Quit),
                 Action::Open(filepath) => Task::done(crate::app::Message::OpenFile(filepath)),
-                Action::ShowErrorStack => Task::done(crate::app::Message::ShowErrors),
+                Action::ShowErrors => Task::done(crate::app::Message::ShowErrors),
+                Action::ShowInfo => Task::done(crate::app::Message::ShowInfo),
             },
             Message::OnCommandInput(cmd) => {
                 if cmd.is_empty() {
-                    return Task::done(crate::app::Message::CmdLine(Message::HideCmdline));
+                    return Task::done(crate::app::Message::CleanScreen);
                 }
                 self.cmd = cmd;
 
                 Task::none()
             }
             Message::OnCommandSubmit => {
-                self.active = false;
-
                 Task::perform(parse_cmd(self.cmd.clone()), |res| match res {
                     Ok(action) => crate::app::Message::CmdLine(Message::Action(action)),
                     Err(err) => crate::app::Message::ErrorOccurred(err),
                 })
             }
-            Message::HideCmdline => {
-                self.active = false;
-                self.cmd.clear();
-
-                Task::none()
-            }
-            Message::ShowCmdline => {
-                self.active = true;
+            Message::FocusInput => {
                 self.cmd = String::from(":");
 
                 text_input::focus(INPUT_ID.clone())
@@ -79,14 +67,10 @@ impl Cmdline {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        if !self.active {
-            return row![].into();
-        }
-
         container(
             text_input("", &self.cmd)
                 .id(INPUT_ID.clone())
-                .on_input_maybe(self.active.then_some(Message::OnCommandInput))
+                .on_input(Message::OnCommandInput)
                 .on_submit(Message::OnCommandSubmit)
                 .width(Length::Fill)
                 .style(|theme, status| {
@@ -99,23 +83,11 @@ impl Cmdline {
         )
         .height(Length::Shrink)
         .width(Length::Fill)
-        .padding(4)
         .into()
     }
 
-    pub fn subscription(&self) -> Subscription<Message> {
-        if !self.active {
-            return Subscription::none();
-        }
-
-        iced::keyboard::on_key_release(|key, _| match key.as_ref() {
-            Key::Named(Named::Escape) => Some(Message::HideCmdline),
-            _ => None,
-        })
-    }
-
-    pub fn show(&self) -> Task<Message> {
-        Task::done(Message::ShowCmdline)
+    pub fn focus(&self) -> Task<Message> {
+        Task::done(Message::FocusInput)
     }
 }
 
@@ -151,7 +123,8 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
 
                     Ok(Action::Open(path))
                 }
-                Rule::errors => Ok(Action::ShowErrorStack),
+                Rule::errors => Ok(Action::ShowErrors),
+                Rule::info => Ok(Action::ShowInfo),
                 _ => Err(Error::ParserError(String::from("Unexpected token"))),
             }
         }
