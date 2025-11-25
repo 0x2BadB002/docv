@@ -1,50 +1,66 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::path::PathBuf;
 
 use iced::{
     Alignment, Element, Length, Subscription, Task, Theme,
-    keyboard::{self, Key, Modifiers},
-    widget::{column, container, scrollable, stack, text},
+    alignment::{Horizontal, Vertical},
+    keyboard::{self, Key, Modifiers, key::Named},
+    widget::{column, container, horizontal_space, row, scrollable, stack, text, vertical_space},
 };
 
-use crate::{Error, Result};
-use docv_pdf::{Document, Page};
+use crate::{Error, Result, app::document::Document};
 
 mod cmdline;
+mod document;
 
 #[derive(Debug)]
 pub enum Message {
     CmdLine(cmdline::Message),
+    Document(document::Message),
 
     OpenFile(PathBuf),
+    DocumentReady(Document),
+
     SetTheme(iced::Theme),
     Quit,
     ShowErrors,
-
+    ShowInfo,
     ShowCmdline,
-    FileOpened(Arc<Mutex<Document>>),
+    CleanScreen,
+
     ErrorOccurred(Error),
-    PagesRead(Vec<Page>),
-    PagesCount(usize),
 }
 
 #[derive(Default, Debug)]
 struct App {
-    file: Option<Arc<Mutex<Document>>>,
-    pages: Option<Vec<Page>>,
-    page_count: usize,
-    error: Option<Arc<Error>>,
-    prev_error: Option<Arc<Error>>,
-    error_backtrace: bool,
-
+    document: Option<document::Document>,
     cmdline: cmdline::Cmdline,
+    popup: Popup,
+    notification_area: NotificationArea,
+
     theme: iced::Theme,
+
+    errors: Vec<Error>,
+}
+
+#[derive(Debug, Default)]
+enum Popup {
+    #[default]
+    None,
+    Info,
+    Errors,
+}
+
+#[derive(Debug, Default)]
+enum NotificationArea {
+    #[default]
+    None,
+    Info(&'static str),
+    Error(String),
+    Cmdline,
 }
 
 pub fn run(filename: Option<PathBuf>) -> Result<()> {
-    iced::application("DocV", App::update, App::view)
+    iced::application(App::title, App::update, App::view)
         .subscription(App::subscription)
         .theme(App::theme)
         .resizable(true)
@@ -62,74 +78,65 @@ pub fn run(filename: Option<PathBuf>) -> Result<()> {
 }
 
 impl App {
+    fn title(&self) -> String {
+        match self.document.as_ref() {
+            Some(doc) => doc.title(),
+            None => "DocV",
+        }
+        .to_string()
+    }
+
     fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::CmdLine(msg) => self.cmdline.update(msg),
-            Message::OpenFile(filepath) => Task::perform(read_file(filepath), |res| {
-                res.map(Message::FileOpened)
-                    .unwrap_or_else(Message::ErrorOccurred)
-            }),
+            Message::Document(msg) => match self.document.as_mut() {
+                Some(doc) => doc.update(msg),
+                None => Task::none(),
+            },
+            Message::OpenFile(filepath) => Task::perform(
+                async move { Document::read_from_path(filepath) },
+                |res| match res {
+                    Ok(doc) => Message::DocumentReady(doc),
+                    Err(err) => Message::ErrorOccurred(err),
+                },
+            ),
+            Message::DocumentReady(doc) => {
+                self.document = Some(doc);
+
+                Task::none()
+            }
             Message::Quit => iced::exit(),
             Message::ShowErrors => {
-                self.error_backtrace = true;
-
-                Task::none()
-            }
-            Message::ShowCmdline => {
-                self.error = None;
-                self.error_backtrace = false;
-
-                self.cmdline.show().map(Message::CmdLine)
-            }
-            Message::FileOpened(file) => {
-                self.error = None;
-                self.error_backtrace = false;
-
-                self.file = Some(file);
-
-                let file1 = self.file.clone().unwrap();
-                let file2 = file1.clone();
-                Task::batch([
-                    Task::perform(
-                        async move {
-                            let mut file = file1.lock().unwrap();
-
-                            file.pages().collect::<std::result::Result<Vec<_>, _>>()
-                        },
-                        |res| match res {
-                            Ok(pages) => Message::PagesRead(pages),
-                            Err(err) => Message::ErrorOccurred(Error::Pdf(err)),
-                        },
-                    ),
-                    Task::perform(
-                        async move {
-                            let mut file = file2.lock().unwrap();
-
-                            file.pages().count()
-                        },
-                        Message::PagesCount,
-                    ),
-                ])
-            }
-            Message::PagesRead(pages) => {
-                self.pages = Some(pages);
-
-                Task::none()
-            }
-            Message::PagesCount(count) => {
-                self.page_count = count;
-
-                Task::none()
-            }
-            Message::ErrorOccurred(error) => {
-                self.error_backtrace = false;
-                self.prev_error = self.error.clone();
-                self.error = Some(Arc::new(error));
-                if self.prev_error.is_none() {
-                    self.prev_error = self.error.clone();
+                if !self.errors.is_empty() {
+                    self.popup = Popup::Errors;
+                } else {
+                    self.notification_area = NotificationArea::Info("No errors");
                 }
 
+                iced::widget::focus_previous()
+            }
+            Message::ShowInfo => {
+                self.popup = Popup::Info;
+
+                iced::widget::focus_previous()
+            }
+            Message::ShowCmdline => {
+                self.notification_area = NotificationArea::Cmdline;
+
+                self.cmdline.focus().map(Message::CmdLine)
+            }
+            Message::ErrorOccurred(error) => {
+                self.notification_area = NotificationArea::Error(format!("{error}"));
+
+                self.errors.push(error);
+
                 Task::none()
+            }
+            Message::CleanScreen => {
+                self.popup = Popup::None;
+                self.notification_area = NotificationArea::None;
+
+                iced::widget::focus_previous()
             }
             Message::SetTheme(theme) => {
                 self.theme = theme;
@@ -140,148 +147,63 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let no_info = "Unavailable".to_string();
-        let main_content = self
-            .file
+        let document = self
+            .document
             .as_ref()
-            .map(|file| {
-                let file = file.lock().unwrap();
-                let info = file.info();
-
-                container(
-                    column![
-                        container(
-                            column![text(format!("Pages count: {}", self.page_count)),]
-                                .padding(10)
-                                .spacing(10)
-                        )
-                        .style(container::rounded_box),
-                        container(
-                            column![
-                                text(format!(
-                                    "Title: {}",
-                                    info.title.as_ref().unwrap_or(&no_info)
-                                )),
-                                text(format!(
-                                    "Subject: {}",
-                                    info.subject.as_ref().unwrap_or(&no_info)
-                                )),
-                                text(format!(
-                                    "Keywords: {}",
-                                    info.keywords.as_ref().unwrap_or(&no_info)
-                                )),
-                            ]
-                            .padding(10)
-                            .spacing(10)
-                        )
-                        .style(container::rounded_box),
-                        container(
-                            column![
-                                text(format!(
-                                    "Author: {}",
-                                    info.author.as_ref().unwrap_or(&no_info)
-                                )),
-                                text(format!(
-                                    "Creator: {}",
-                                    info.creator.as_ref().unwrap_or(&no_info)
-                                )),
-                                text(format!(
-                                    "Producer: {}",
-                                    info.producer.as_ref().unwrap_or(&no_info)
-                                )),
-                            ]
-                            .padding(10)
-                            .spacing(10)
-                        )
-                        .style(container::rounded_box),
-                        container(
-                            column![
-                                text(format!(
-                                    "Creation date: {}",
-                                    info.creation_date.unwrap_or_default()
-                                )),
-                                text(format!(
-                                    "Modified date: {}",
-                                    info.mod_date.unwrap_or_default()
-                                )),
-                            ]
-                            .padding(10)
-                            .spacing(10)
-                        )
-                        .style(container::rounded_box),
-                        container(
-                            column![
-                                text(format!("Version: {}", file.version())),
-                                text(format!("Trapped: {}", info.trapped)),
-                                text(format!(
-                                    "File size: {:.2} Mib",
-                                    file.filesize() as f64 / ((1024 * 1024) as f64)
-                                )),
-                                text(
-                                    file.hash()
-                                        .map(|hash| { format!("File hash: {hash}") })
-                                        .unwrap_or_else(|| "Hash wasn't provided".to_string())
-                                )
-                            ]
-                            .padding(10)
-                            .spacing(10)
-                        )
-                        .style(container::rounded_box),
-                    ]
-                    .spacing(15)
-                    .padding(10),
-                )
-            })
-            .unwrap_or_else(|| container(text("No file opened")))
-            .padding(5);
-
-        let interface = container(
-            column![self.error.as_ref().map_or_else(
-                || self.cmdline.view().map(Message::CmdLine),
-                |err| {
-                    container(
-                        text(if self.error_backtrace {
-                            format!("{err:?}")
-                        } else {
-                            format!("{err}")
-                        })
-                        .style(text::danger),
-                    )
-                    .height(Length::Shrink)
-                    .width(Length::Fill)
-                    .padding(5)
+            .map(|doc| doc.view().map(Message::Document))
+            .unwrap_or_else(|| {
+                container(text("No file opened").style(text::primary))
+                    .padding(20)
                     .into()
-                }
-            ),]
-            .spacing(0)
-            .padding(0)
-            .align_x(Alignment::Start),
-        )
-        .width(Length::Fill)
-        .align_bottom(Length::Fill)
-        .padding(0);
+            });
 
-        stack![
-            scrollable(main_content)
-                .height(Length::Fill)
-                .width(Length::Fill),
-            interface
-        ]
-        .into()
+        let main_view = container(document).height(Length::Fill).width(Length::Fill);
+
+        let info = container(self.notification_area.view(self))
+            .align_bottom(Length::Fill)
+            .width(Length::Fill);
+
+        let popup = container(
+            column![
+                vertical_space(),
+                row![
+                    horizontal_space(),
+                    container(self.popup.view(self))
+                        .style(container::rounded_box)
+                        .width(Length::FillPortion(8)),
+                    horizontal_space(),
+                ]
+                .height(Length::FillPortion(8))
+                .align_y(Vertical::Center),
+                vertical_space(),
+            ]
+            .height(Length::Fill)
+            .width(Length::Fill)
+            .align_x(Horizontal::Center),
+        )
+        .height(Length::Fill)
+        .width(Length::Fill)
+        .align_x(Horizontal::Center);
+
+        stack![main_view, popup, info].into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
-            keyboard::on_key_press(|key, key_mod| {
-                if let Key::Character(key) = key.as_ref()
-                    && key == ";"
-                    && key_mod == Modifiers::SHIFT
-                {
-                    return Some(Message::ShowCmdline);
+            keyboard::on_key_press(|key, key_mod| match key.as_ref() {
+                Key::Character(key) => {
+                    if key == ";" && key_mod == Modifiers::SHIFT {
+                        return Some(Message::ShowCmdline);
+                    }
+                    None
                 }
-                None
+                Key::Named(Named::Escape) => Some(Message::CleanScreen),
+                _ => None,
             }),
-            self.cmdline.subscription().map(Message::CmdLine),
+            keyboard::on_key_release(|key, _| match key.as_ref() {
+                Key::Named(Named::Escape) => Some(Message::CleanScreen),
+                _ => None,
+            }),
         ])
     }
 
@@ -290,8 +212,41 @@ impl App {
     }
 }
 
-async fn read_file(filepath: PathBuf) -> Result<Arc<Mutex<Document>>> {
-    let file = Document::from_path(&filepath)?;
+impl Popup {
+    fn view<'a>(&'a self, app: &'a App) -> Element<'a, Message> {
+        match self {
+            Popup::None => column![].into(),
+            Popup::Info => match app.document.as_ref() {
+                Some(doc) => doc.view_info().map(Message::Document),
+                None => column![].into(),
+            },
+            Popup::Errors => scrollable(
+                column(
+                    app.errors
+                        .iter()
+                        .map(|err| container(text!("{:#?}", err)).into()),
+                )
+                .width(Length::Fill)
+                .padding(10),
+            )
+            .into(),
+        }
+    }
+}
 
-    Ok(Arc::new(Mutex::new(file)))
+impl NotificationArea {
+    fn view<'a>(&'a self, app: &'a App) -> Element<'a, Message> {
+        match self {
+            NotificationArea::None => row![].into(),
+            NotificationArea::Info(msg) => text!("{msg}")
+                .align_y(Alignment::Center)
+                .style(text::secondary)
+                .into(),
+            NotificationArea::Error(err) => text!("{err}")
+                .align_y(Alignment::Center)
+                .style(text::danger)
+                .into(),
+            NotificationArea::Cmdline => app.cmdline.view().map(Message::CmdLine),
+        }
+    }
 }
