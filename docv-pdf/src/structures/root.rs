@@ -14,6 +14,7 @@ pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Root {
     pub version: Option<Version>,
     pub extensions: Option<Object>,

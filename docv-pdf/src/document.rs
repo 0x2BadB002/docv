@@ -117,9 +117,6 @@ mod error {
             source: crate::objects::Error,
         },
 
-        #[snafu(display("Invalid object type"))]
-        InvalidObjectType { source: crate::types::object::Error },
-
         #[snafu(display("Failed to read root dictionary"))]
         Root {
             source: crate::structures::root::Error,
@@ -155,7 +152,7 @@ mod test {
             let entry = example.whatever_context("Failed to directory entry")?;
             let path = entry.path();
 
-            let mut document = Document::read_file(&path)
+            let mut document = Document::from_path(&path)
                 .with_whatever_context(|_| format!("Failed to open file {}", path.display()))?;
 
             let count = document.pages().count();

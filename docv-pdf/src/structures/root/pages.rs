@@ -25,7 +25,7 @@ impl<'a> Pages<'a> {
             root: pages.clone(),
             stack: Vec::new(),
             current_iter: pages.kids.clone().into_iter(),
-            current_inheritable: InheritableAttributes::default(),
+            current_inheritable: pages.inheritable_attributes.clone(),
             objects,
         }
     }
@@ -61,9 +61,6 @@ impl<'a> Pages<'a> {
                             dictionary,
                             Some(self.current_inheritable.clone()),
                         )?;
-
-                        dbg!(&new_node);
-
                         let old_iter =
                             std::mem::replace(&mut self.current_iter, new_node.kids.into_iter());
                         let old_inheritable = std::mem::replace(
@@ -111,6 +108,7 @@ impl<'a> std::iter::Iterator for Pages<'a> {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Page {
     contents: Vec<Stream>,
     resources: Dictionary,
@@ -159,8 +157,6 @@ impl Page {
         inheritable_attrs: &InheritableAttributes,
         objects: &mut Objects,
     ) -> Result<Self> {
-        dbg!(dictionary);
-
         let contents = dictionary
             .get("Contents")
             .context(error::FieldNotFound { field: "Contents" })?
@@ -231,6 +227,7 @@ impl Page {
             .map(|object| object.as_integer())
             .transpose()
             .context(error::InvalidType { field: "Rotate" })?
+            .or(inheritable_attrs.rotate)
             .unwrap_or(0);
 
         let user_unit = dictionary
@@ -318,10 +315,12 @@ impl Page {
             .context(error::InvalidType { field: "PieceInfo" })?;
 
         let struct_parents = dictionary
-            .get("Dur")
+            .get("StructParents")
             .map(|object| object.as_integer())
             .transpose()
-            .context(error::InvalidType { field: "Dur" })?;
+            .context(error::InvalidType {
+                field: "StructParents",
+            })?;
 
         let id = dictionary
             .get("ID")
