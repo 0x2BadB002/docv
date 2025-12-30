@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
-use iced::widget::{container, text_input};
+use iced::widget::{self, container, text_input};
 use iced::{Element, Length, Task};
 use pest::Parser;
 use pest_derive::Parser;
+use snafu::Snafu;
 
-use crate::{Error, Result};
+#[derive(Debug, Snafu)]
+pub struct Error(error::Error);
+type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Parser)]
 #[grammar = "app/cmdline.pest"]
@@ -33,7 +36,7 @@ pub enum Message {
     FocusInput,
 }
 
-static INPUT_ID: LazyLock<text_input::Id> = LazyLock::new(text_input::Id::unique);
+static INPUT_ID: LazyLock<widget::Id> = LazyLock::new(widget::Id::unique);
 
 impl Cmdline {
     pub fn update(&mut self, message: Message) -> Task<crate::app::Message> {
@@ -55,13 +58,15 @@ impl Cmdline {
             Message::OnCommandSubmit => {
                 Task::perform(parse_cmd(self.cmd.clone()), |res| match res {
                     Ok(action) => crate::app::Message::CmdLine(Message::Action(action)),
-                    Err(err) => crate::app::Message::ErrorOccurred(err),
+                    Err(err) => crate::app::Message::ErrorOccurred(crate::error::Error::Command {
+                        source: err,
+                    }),
                 })
             }
             Message::FocusInput => {
                 self.cmd = String::from(":");
 
-                text_input::focus(INPUT_ID.clone())
+                widget::operation::focus(INPUT_ID.clone())
             }
         }
     }
@@ -95,28 +100,34 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
     let mut cmd = CmdlineParser::parse(Rule::line, cmd.as_str())
         .map_err(|err| {
             tracing::error!("{}", err);
-            Error::ParserError(cmd.clone())
+            error::Error::Parser {
+                message: err.to_string(),
+            }
         })?
         .next()
-        .ok_or_else(|| Error::ParserError(String::from("No top token parsed")))?
+        .ok_or_else(|| error::Error::Parser {
+            message: String::from("No top token parsed"),
+        })?
         .into_inner();
 
-    let first = cmd
-        .next()
-        .ok_or_else(|| Error::ParserError(String::from("No verb token parsed")))?;
+    let first = cmd.next().ok_or_else(|| error::Error::Parser {
+        message: String::from("No verb token parsed"),
+    })?;
 
     match first.as_rule() {
         Rule::verb => {
             let inner_verb = first
                 .into_inner()
                 .next()
-                .ok_or_else(|| Error::ParserError(String::from("No inner verb parsed")))?;
+                .ok_or_else(|| error::Error::Parser {
+                    message: String::from("No inner verb parsed"),
+                })?;
 
             match inner_verb.as_rule() {
                 Rule::quit => Ok(Action::Quit),
                 Rule::open => {
-                    let filename = cmd.next().ok_or_else(|| {
-                        Error::ParserError(String::from("Expected filename argument"))
+                    let filename = cmd.next().ok_or_else(|| error::Error::Parser {
+                        message: String::from("Unexpected filename argument"),
                     })?;
 
                     let path = PathBuf::from(filename.as_str());
@@ -125,9 +136,26 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
                 }
                 Rule::errors => Ok(Action::ShowErrors),
                 Rule::info => Ok(Action::ShowInfo),
-                _ => Err(Error::ParserError(String::from("Unexpected token"))),
+                _ => Err(error::Error::Parser {
+                    message: String::from("Unexpected token"),
+                }
+                .into()),
             }
         }
-        _ => Err(Error::ParserError(String::from("Unexpected token"))),
+        _ => Err(error::Error::Parser {
+            message: String::from("Unexpected token"),
+        }
+        .into()),
+    }
+}
+
+mod error {
+    use snafu::Snafu;
+
+    #[derive(Debug, Snafu)]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
+    pub(super) enum Error {
+        #[snafu(display("{message}"))]
+        Parser { message: String },
     }
 }

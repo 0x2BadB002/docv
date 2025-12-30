@@ -1,16 +1,17 @@
 use std::path::PathBuf;
 
 use iced::{
-    Alignment, Element, Length, Subscription, Task, Theme,
+    Alignment, Element, Length, Subscription, Task,
     alignment::{Horizontal, Vertical},
-    keyboard::{self, Key, Modifiers, key::Named},
-    widget::{column, container, horizontal_space, row, scrollable, stack, text, vertical_space},
+    keyboard::{self, Key, key::Named},
+    widget::{column, container, row, scrollable, stack, text},
 };
+use snafu::ResultExt;
 
 use crate::{Error, Result, app::document::Document};
 
-mod cmdline;
-mod document;
+pub mod cmdline;
+pub mod document;
 
 #[derive(Debug)]
 pub enum Message {
@@ -37,7 +38,7 @@ struct App {
     popup: Popup,
     notification_area: NotificationArea,
 
-    theme: iced::Theme,
+    theme: Option<iced::Theme>,
 
     errors: Vec<Error>,
 }
@@ -60,21 +61,27 @@ enum NotificationArea {
 }
 
 pub fn run(filename: Option<PathBuf>) -> Result<()> {
-    iced::application(App::title, App::update, App::view)
-        .subscription(App::subscription)
-        .theme(App::theme)
-        .resizable(true)
-        .centered()
-        .run_with(|| {
-            let mut tasks = vec![Task::done(Message::SetTheme(Theme::Nord))];
+    iced::application(
+        move || {
+            let filename = filename.clone();
+            let mut tasks = vec![Task::done(Message::SetTheme(iced::Theme::Nord))];
 
             if let Some(filename) = filename {
                 tasks.push(Task::done(Message::OpenFile(filename)));
             }
 
             (App::default(), Task::batch(tasks))
-        })
-        .map_err(Error::Iced)
+        },
+        App::update,
+        App::view,
+    )
+    .subscription(App::subscription)
+    .theme(App::theme)
+    .title(App::title)
+    .resizable(true)
+    .centered()
+    .run()
+    .context(crate::error::IcedSnafu)
 }
 
 impl App {
@@ -113,12 +120,12 @@ impl App {
                     self.notification_area = NotificationArea::Info("No errors");
                 }
 
-                iced::widget::focus_previous()
+                iced::widget::operation::focus_previous()
             }
             Message::ShowInfo => {
                 self.popup = Popup::Info;
 
-                iced::widget::focus_previous()
+                iced::widget::operation::focus_previous()
             }
             Message::ShowCmdline => {
                 self.notification_area = NotificationArea::Cmdline;
@@ -136,10 +143,10 @@ impl App {
                 self.popup = Popup::None;
                 self.notification_area = NotificationArea::None;
 
-                iced::widget::focus_previous()
+                iced::widget::operation::focus_previous()
             }
             Message::SetTheme(theme) => {
-                self.theme = theme;
+                self.theme = Some(theme);
 
                 Task::none()
             }
@@ -164,50 +171,33 @@ impl App {
             .width(Length::Fill);
 
         let popup = container(
-            column![
-                vertical_space(),
-                row![
-                    horizontal_space(),
-                    container(self.popup.view(self))
-                        .style(container::rounded_box)
-                        .width(Length::FillPortion(8)),
-                    horizontal_space(),
-                ]
-                .height(Length::FillPortion(8))
+            container(container(self.popup.view(self)).style(container::rounded_box))
+                .padding(40)
+                .align_x(Horizontal::Center)
                 .align_y(Vertical::Center),
-                vertical_space(),
-            ]
-            .height(Length::Fill)
-            .width(Length::Fill)
-            .align_x(Horizontal::Center),
         )
         .height(Length::Fill)
-        .width(Length::Fill)
-        .align_x(Horizontal::Center);
+        .width(Length::Fill);
 
         stack![main_view, popup, info].into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        Subscription::batch([
-            keyboard::on_key_press(|key, key_mod| match key.as_ref() {
-                Key::Character(key) => {
-                    if key == ";" && key_mod == Modifiers::SHIFT {
-                        return Some(Message::ShowCmdline);
-                    }
-                    None
+        keyboard::listen().filter_map(|event| match event {
+            keyboard::Event::KeyPressed { modified_key, .. } => {
+                if modified_key == Key::Character(":".into()) {
+                    return Some(Message::ShowCmdline);
                 }
-                Key::Named(Named::Escape) => Some(Message::CleanScreen),
-                _ => None,
-            }),
-            keyboard::on_key_release(|key, _| match key.as_ref() {
-                Key::Named(Named::Escape) => Some(Message::CleanScreen),
-                _ => None,
-            }),
-        ])
+                if modified_key == Key::Named(Named::Escape) {
+                    return Some(Message::CleanScreen);
+                }
+                None
+            }
+            _ => None,
+        })
     }
 
-    fn theme(&self) -> iced::Theme {
+    fn theme(&self) -> Option<iced::Theme> {
         self.theme.clone()
     }
 }
@@ -220,16 +210,16 @@ impl Popup {
                 Some(doc) => doc.view_info().map(Message::Document),
                 None => column![].into(),
             },
-            Popup::Errors => scrollable(
-                column(
-                    app.errors
-                        .iter()
-                        .map(|err| container(text!("{:#?}", err)).into()),
+            Popup::Errors => {
+                scrollable(
+                    column(app.errors.iter().map(|err| {
+                        container(text!("{:#?}", snafu::Report::from_error(err))).into()
+                    }))
+                    .width(Length::Fill)
+                    .padding(10),
                 )
-                .width(Length::Fill)
-                .padding(10),
-            )
-            .into(),
+                .into()
+            }
         }
     }
 }

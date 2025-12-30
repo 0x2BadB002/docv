@@ -7,6 +7,7 @@ use iced::{
     Element, Length, Task,
     widget::{column, container, scrollable, text},
 };
+use snafu::ResultExt;
 
 use crate::Error;
 
@@ -31,7 +32,7 @@ enum View {
 
 impl Document {
     pub fn read_from_path(path: PathBuf) -> Result<Self, Error> {
-        let mut file = docv_pdf::Document::from_path(&path)?;
+        let mut file = docv_pdf::Document::from_path(&path).context(crate::error::PdfSnafu)?;
 
         let title = file
             .info()
@@ -41,7 +42,8 @@ impl Document {
 
         let pages = file
             .pages()
-            .collect::<std::result::Result<Vec<_>, docv_pdf::Error>>()?;
+            .collect::<std::result::Result<Vec<_>, docv_pdf::Error>>()
+            .context(crate::error::PdfSnafu)?;
         let page_count = file.pages().count();
 
         Ok(Document {
