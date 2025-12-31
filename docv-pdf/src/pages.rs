@@ -10,6 +10,38 @@ use crate::{
 pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
 
+/// Iterator over pages in a PDF document's page tree.
+///
+/// The `Pages` struct provides an iterator that traverses the PDF page tree
+/// structure, resolving indirect references and flattening the hierarchy
+/// into a sequence of individual page objects.
+///
+/// # Page Tree Structure
+/// PDF documents organize pages in a tree structure where:
+/// - The root node is a `/Pages` object
+/// - Intermediate nodes are also `/Pages` objects (containing `/Kids`)
+/// - Leaf nodes are `/Page` objects
+/// - Attributes can be inherited from parent pages nodes
+///
+/// This iterator performs a depth-first traversal of this tree structure.
+///
+/// # Usage
+/// ```
+/// use std::path::PathBuf;
+/// use docv_pdf::Document;
+///
+/// let mut document = Document::from_path(&PathBuf::from("../example_files/report1.pdf")).unwrap();
+/// for page in document.pages() {
+///     let page = page.unwrap();
+///
+///     // Process page...
+/// }
+/// ```
+///
+/// # Note
+/// This iterator consumes and mutates the `Objects` store to resolve
+/// indirect references. It should not be used concurrently with other
+/// operations that modify the same objects store.
 #[derive(Debug)]
 pub struct Pages<'a> {
     root: PagesTreeNode,
@@ -46,6 +78,25 @@ impl<'a> Pages<'a> {
         }
     }
 
+    /// Computes the next page in the iteration sequence.
+    ///
+    /// This private method performs the actual traversal logic, following
+    /// the PDF page tree structure and resolving indirect references.
+    /// It uses a stack to handle nested page tree nodes and maintains
+    /// inheritable attributes from parent nodes.
+    ///
+    /// # Returns
+    /// - `Ok(Some(Page))` if a page was successfully retrieved
+    /// - `Ok(None)` if there are no more pages (iteration complete)
+    /// - `Err(Error)` if an error occurred during traversal or resolution
+    ///
+    /// # Errors
+    /// Returns various errors including:
+    /// - `Error::ObjectNotFound` if an indirect reference cannot be resolved
+    /// - `Error::InvalidKidType` if a kid object has an unexpected type
+    /// - `Error::UnexpectedNodeType` if a node type is not "Page" or "Pages"
+    /// - `Error::InvalidPage` if page data cannot be parsed
+    /// - `Error::InvalidPageNode` if page tree node data cannot be parsed
     fn compute_next(&mut self) -> Result<Option<Page>> {
         loop {
             if let Some(kid_ref) = self.current_iter.next() {

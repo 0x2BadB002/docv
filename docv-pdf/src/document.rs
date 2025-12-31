@@ -28,8 +28,57 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn from_path(path: &PathBuf) -> std::result::Result<Self, crate::Error> {
-        Ok(read_document_from_file(path).context(crate::error::Document)?)
+    pub fn from_path(path: &PathBuf) -> crate::Result<Self> {
+        let file = File::open(path)
+            .with_context(|_| error::OpenFile { path: path.clone() })
+            .map_err(|err| err.into())
+            .context(crate::error::Document)?;
+
+        let file_metadata = file
+            .metadata()
+            .context(error::Metadata)
+            .map_err(|err| err.into())
+            .context(crate::error::Document)?;
+
+        let (mut objects, metadata) = Objects::from_file(file)
+            .context(error::Objects)
+            .map_err(|err| err.into())
+            .context(crate::error::Document)?;
+
+        let root_object = objects
+            .get_object(&metadata.root_id)
+            .context(error::Object {
+                object: metadata.root_id,
+            })
+            .map_err(|err| err.into())
+            .context(crate::error::Document)?;
+
+        let root = Root::from_object(root_object, &mut objects)
+            .context(error::Root)
+            .map_err(|err| err.into())
+            .context(crate::error::Document)?;
+
+        let info = metadata
+            .info_id
+            .map(|object| -> Result<Info> {
+                let object = objects
+                    .get_object(&object)
+                    .context(error::Object { object })?;
+
+                Ok(Info::from_object(object).context(error::Info)?)
+            })
+            .transpose()
+            .context(crate::error::Document)?;
+
+        Ok(Document {
+            root,
+            info: info.unwrap_or_default(),
+            objects,
+
+            size: file_metadata.len(),
+            version: metadata.version,
+            hash: metadata.hash,
+        })
     }
 
     pub fn info(&self) -> &Info {
@@ -51,43 +100,6 @@ impl Document {
     pub fn pages<'a>(&'a mut self) -> Pages<'a> {
         Pages::new(&self.root.pages, &mut self.objects)
     }
-}
-
-fn read_document_from_file(path: &PathBuf) -> Result<Document> {
-    let file = File::open(path).with_context(|_| error::OpenFile { path: path.clone() })?;
-
-    let file_metadata = file.metadata().context(error::Metadata)?;
-
-    let (mut objects, metadata) = Objects::from_file(file).context(error::Objects)?;
-
-    let root_object = objects
-        .get_object(&metadata.root_id)
-        .context(error::Object {
-            object: metadata.root_id,
-        })?;
-
-    let root = Root::from_object(root_object, &mut objects).context(error::Root)?;
-
-    let info = metadata
-        .info_id
-        .map(|object| -> Result<Info> {
-            let object = objects
-                .get_object(&object)
-                .context(error::Object { object })?;
-
-            Ok(Info::from_object(object).context(error::Info)?)
-        })
-        .transpose()?;
-
-    Ok(Document {
-        root,
-        info: info.unwrap_or_default(),
-        objects,
-
-        size: file_metadata.len(),
-        version: metadata.version,
-        hash: metadata.hash,
-    })
 }
 
 mod error {

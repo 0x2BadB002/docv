@@ -79,6 +79,21 @@ impl Object {
         matches!(self, Object::Null)
     }
 
+    /// Returns the direct object by resolving indirect references.
+    ///
+    /// This method follows indirect references to return the actual object they point to.
+    /// If the object is not an indirect reference, it returns the object itself.
+    /// If an indirect reference cannot be resolved (e.g., the referenced object doesn't exist),
+    /// it returns the original indirect reference unchanged.
+    ///
+    /// # Arguments
+    /// * `objects` - The object store used to resolve indirect references
+    ///
+    /// # Returns
+    /// - `Cow::Owned(Object)` containing the resolved direct object if successful
+    /// - `Cow::Borrowed(&Object)` containing the original object if:
+    ///   - It's not an indirect reference, or
+    ///   - The indirect reference cannot be resolved
     pub fn direct<'a>(&'a self, objects: &mut Objects) -> Cow<'a, Object> {
         match self {
             Object::IndirectReference(obj_ref) => objects
