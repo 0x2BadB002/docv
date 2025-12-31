@@ -1,5 +1,6 @@
 mod document;
 mod objects;
+mod pages;
 mod parser;
 mod structures;
 mod types;
@@ -13,7 +14,7 @@ pub struct Error(error::Error);
 mod error {
     use snafu::Snafu;
 
-    use crate::{document, structures};
+    use crate::{document, pages};
 
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub(super)), context(suffix(false)))]
@@ -22,8 +23,6 @@ mod error {
         Document { source: document::Error },
 
         #[snafu(display("Error while reading document pages"))]
-        Pages {
-            source: structures::root::pages::Error,
-        },
+        Pages { source: pages::Error },
     }
 }

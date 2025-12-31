@@ -4,10 +4,11 @@ use snafu::{ResultExt, Snafu};
 
 use crate::{
     objects::Objects,
+    pages::Pages,
     structures::{
         hash::Hash,
         info::Info,
-        root::{Root, pages::Pages, version::Version},
+        root::{Root, version::Version},
     },
 };
 
