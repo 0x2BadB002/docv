@@ -51,7 +51,12 @@ pub fn dictionary(input: &[u8]) -> IResult<&[u8], Dictionary> {
     ))
     .map(Dictionary::from);
 
-    delimited(tag("<<"), contents, tag(">>")).parse(input)
+    delimited(
+        (tag("<<"), many0(alt((whitespace, comment, eol)))),
+        contents,
+        tag(">>"),
+    )
+    .parse(input)
 }
 
 #[cfg(test)]
@@ -75,6 +80,13 @@ mod tests {
             TestCase {
                 name: "valid empty dictionary",
                 input: b"<<>>",
+                expected: true,
+                expected_result: Some(Dictionary::default()),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid empty dictionary with whitespace",
+                input: b"<< >>",
                 expected: true,
                 expected_result: Some(Dictionary::default()),
                 expected_remainder: Some(b""),
