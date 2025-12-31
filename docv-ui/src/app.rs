@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use iced::{
     Alignment, Element, Length, Subscription, Task,
-    alignment::{Horizontal, Vertical},
     keyboard::{self, Key, key::Named},
     widget::{column, container, row, scrollable, stack, text},
 };
@@ -173,8 +172,7 @@ impl App {
         let popup = container(
             container(container(self.popup.view(self)).style(container::rounded_box))
                 .padding(40)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center),
+                .center(Length::Fill),
         )
         .height(Length::Fill)
         .width(Length::Fill);
