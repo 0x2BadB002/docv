@@ -2,7 +2,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     objects::Objects,
-    types::{Array, Dictionary, IndirectReference, Object, Rectangle, Stream, string::Date},
+    types::{Array, Dictionary, IndirectReference, Rectangle, Stream, string::Date},
 };
 
 #[derive(Debug, Snafu)]
@@ -40,9 +40,10 @@ impl<'a> Pages<'a> {
                         reference: kid_ref,
                         field: "Pages",
                     })?;
-                let dictionary = kid_obj
-                    .as_dictionary()
-                    .context(error::InvalidType { field: "Kids" })?;
+                let dictionary = kid_obj.as_dictionary().context(error::InvalidKidType {
+                    field: "Kids",
+                    indirect_reference: kid_ref,
+                })?;
                 let node_type = dictionary
                     .get("Type")
                     .and_then(|obj| obj.as_name().ok())
@@ -96,10 +97,6 @@ impl<'a> std::iter::Iterator for Pages<'a> {
             Ok(None) => None,
             Err(err) => Some(Err(err.into())),
         }
-    }
-
-    fn count(self) -> usize {
-        self.root.leaf_count
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -159,23 +156,23 @@ impl Page {
     ) -> Result<Self> {
         let contents = dictionary
             .get("Contents")
-            .context(error::FieldNotFound { field: "Contents" })?
-            .direct(objects);
-
-        let contents = match *contents {
-            Object::Stream(_) => vec![contents.as_stream().cloned().unwrap()],
-            Object::Array(_) => contents
-                .as_array()
-                .with_objects(objects)
-                .of(|obj| obj.as_stream().cloned())
-                .context(error::InvalidArray { field: "Contents" })?,
-            _ => {
-                return Err(error::Error::FailedResolveContents {
-                    object: contents.into_owned(),
-                }
-                .into());
-            }
-        };
+            .map(|contents| {
+                let contents = contents.direct(objects);
+                contents
+                    .as_stream()
+                    .map(|stream| vec![stream.clone()])
+                    .or_else(|_| {
+                        contents
+                            .as_array()
+                            .with_objects(objects)
+                            .of(|obj| obj.as_stream().cloned())
+                    })
+                    .context(error::FailedResolveContents {
+                        object: contents.into_owned(),
+                    })
+            })
+            .transpose()?
+            .unwrap_or_else(Vec::new);
 
         let resources = dictionary
             .get("Resources")
@@ -292,7 +289,7 @@ impl Page {
 
         let annots = dictionary
             .get("Annots")
-            .map(|object| object.as_array().generic())
+            .map(|object| object.direct(objects).as_array().generic())
             .transpose()
             .context(error::InvalidArray { field: "Annots" })?;
 
@@ -460,29 +457,45 @@ pub struct InheritableAttributes {
 
 impl InheritableAttributes {
     fn read(&mut self, dictionary: &Dictionary) -> Result<()> {
-        self.resources = dictionary
+        let resources = dictionary
             .get("Resources")
             .map(|object| object.as_dictionary().cloned())
             .transpose()
             .context(error::InvalidType { field: "Resources" })?;
 
-        self.media_box = dictionary
+        let media_box = dictionary
             .get("MediaBox")
             .map(|object| object.as_array().rectangle())
             .transpose()
             .context(error::InvalidArray { field: "MediaBox" })?;
 
-        self.crop_box = dictionary
+        let crop_box = dictionary
             .get("CropBox")
             .map(|object| object.as_array().rectangle())
             .transpose()
             .context(error::InvalidArray { field: "CropBox" })?;
 
-        self.rotate = dictionary
+        let rotate = dictionary
             .get("Rotate")
             .map(|object| object.as_integer())
             .transpose()
             .context(error::InvalidType { field: "Rotate" })?;
+
+        if resources.is_some() {
+            self.resources = resources;
+        }
+
+        if media_box.is_some() {
+            self.media_box = media_box;
+        }
+
+        if crop_box.is_some() {
+            self.crop_box = crop_box;
+        }
+
+        if rotate.is_some() {
+            self.rotate = rotate;
+        }
 
         Ok(())
     }
@@ -502,6 +515,15 @@ mod error {
         #[snafu(display("Invalid object type for field `{field}`"))]
         InvalidType {
             field: &'static str,
+            source: crate::types::object::Error,
+        },
+
+        #[snafu(display(
+            "Invalid object type for field `{field}`. Used ref: `{indirect_reference}`"
+        ))]
+        InvalidKidType {
+            field: &'static str,
+            indirect_reference: IndirectReference,
             source: crate::types::object::Error,
         },
 
@@ -528,6 +550,9 @@ mod error {
         UnexpectedNodeType { got: String },
 
         #[snafu(display("Failed to resolve contents: unexpected object `{object:?}`"))]
-        FailedResolveContents { object: Object },
+        FailedResolveContents {
+            object: Object,
+            source: crate::types::array::Error,
+        },
     }
 }
