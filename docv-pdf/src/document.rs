@@ -97,6 +97,38 @@ impl Document {
         self.hash.as_ref()
     }
 
+    /// Iterator over pages in a PDF document's page tree.
+    ///
+    /// The `Pages` struct provides an iterator that traverses the PDF page tree
+    /// structure, resolving indirect references and flattening the hierarchy
+    /// into a sequence of individual page objects.
+    ///
+    /// # Page Tree Structure
+    /// PDF documents organize pages in a tree structure where:
+    /// - The root node is a `/Pages` object
+    /// - Intermediate nodes are also `/Pages` objects (containing `/Kids`)
+    /// - Leaf nodes are `/Page` objects
+    /// - Attributes can be inherited from parent pages nodes
+    ///
+    /// This iterator performs a depth-first traversal of this tree structure.
+    ///
+    /// # Usage
+    /// ```
+    /// use std::path::PathBuf;
+    /// use docv_pdf::Document;
+    ///
+    /// let mut document = Document::from_path(&PathBuf::from("../example_files/report1.pdf")).unwrap();
+    /// for page in document.pages() {
+    ///     let page = page.unwrap();
+    ///
+    ///     // Process page...
+    /// }
+    /// ```
+    ///
+    /// # Note
+    /// This iterator consumes and mutates the `Objects` store to resolve
+    /// indirect references. It should not be used concurrently with other
+    /// operations that modify the same objects store.
     pub fn pages<'a>(&'a mut self) -> Pages<'a> {
         Pages::new(&self.root.pages, &mut self.objects)
     }
