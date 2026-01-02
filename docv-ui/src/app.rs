@@ -159,11 +159,10 @@ impl App {
             .map(|doc| doc.view().map(Message::Document))
             .unwrap_or_else(|| {
                 container(text("No file opened").style(text::primary))
+                    .height(Length::Fill)
                     .padding(20)
                     .into()
             });
-
-        let main_view = container(document).height(Length::Fill).width(Length::Fill);
 
         let current_page = match self.document.as_ref() {
             Some(doc) => container(text!("  {}/{}  ", doc.current_page(), doc.page_count))
@@ -190,7 +189,9 @@ impl App {
             .width(Length::Fill)
             .height(30);
 
-        let status_area = container(column![status_line, action_line]).align_bottom(Length::Fill);
+        let status_area = container(column![status_line, action_line]).height(Length::Shrink);
+
+        let main_view = column![document, status_area].height(Length::Fill);
 
         let popup = container(
             container(container(self.popup.view(self)).style(container::rounded_box))
@@ -200,7 +201,7 @@ impl App {
         .height(Length::Fill)
         .width(Length::Fill);
 
-        stack![main_view, popup, status_area].into()
+        stack![main_view, popup].into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
