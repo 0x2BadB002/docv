@@ -6,7 +6,9 @@ open   = !{ "open" | "o" }
 errors = !{ "errors" }
 info   = !{ "info" }
 
-verb = !{ quit | open | errors | info }
+page_number = !{ ASCII_DIGIT+ }
+
+verb = !{ quit | open | errors | info | page_number }
 
 arg = !{ (!WHITESPACE ~ ANY)+ }
 

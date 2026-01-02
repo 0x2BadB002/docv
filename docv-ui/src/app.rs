@@ -35,7 +35,7 @@ struct App {
     document: Option<document::Document>,
     cmdline: cmdline::Cmdline,
     popup: Popup,
-    notification_area: NotificationArea,
+    action_area: ActionArea,
 
     theme: Option<iced::Theme>,
 
@@ -51,7 +51,7 @@ enum Popup {
 }
 
 #[derive(Debug, Default)]
-enum NotificationArea {
+enum ActionArea {
     #[default]
     None,
     Info(&'static str),
@@ -116,7 +116,7 @@ impl App {
                 if !self.errors.is_empty() {
                     self.popup = Popup::Errors;
                 } else {
-                    self.notification_area = NotificationArea::Info("No errors");
+                    self.action_area = ActionArea::Info("No errors");
                 }
 
                 iced::widget::operation::focus_previous()
@@ -127,12 +127,12 @@ impl App {
                 iced::widget::operation::focus_previous()
             }
             Message::ShowCmdline => {
-                self.notification_area = NotificationArea::Cmdline;
+                self.action_area = ActionArea::Cmdline;
 
                 self.cmdline.focus().map(Message::CmdLine)
             }
             Message::ErrorOccurred(error) => {
-                self.notification_area = NotificationArea::Error(format!("{error}"));
+                self.action_area = ActionArea::Error(format!("{error}"));
 
                 self.errors.push(error);
 
@@ -140,7 +140,7 @@ impl App {
             }
             Message::CleanScreen => {
                 self.popup = Popup::None;
-                self.notification_area = NotificationArea::None;
+                self.action_area = ActionArea::None;
 
                 iced::widget::operation::focus_previous()
             }
@@ -165,9 +165,32 @@ impl App {
 
         let main_view = container(document).height(Length::Fill).width(Length::Fill);
 
-        let info = container(self.notification_area.view(self))
-            .align_bottom(Length::Fill)
-            .width(Length::Fill);
+        let current_page = match self.document.as_ref() {
+            Some(doc) => container(text!("  {}/{}  ", doc.current_page(), doc.page_count))
+                .center_y(Length::Fill)
+                .height(Length::Fill),
+            None => container(row![]),
+        };
+
+        let current_file = match self.document.as_ref() {
+            Some(doc) => container(text!("  {}  ", doc.title))
+                .style(container::success)
+                .center_y(Length::Fill)
+                .height(Length::Fill),
+            None => container(row![]),
+        };
+
+        let status_line = container(row![current_page, current_file].spacing(4))
+            .center_y(Length::Fill)
+            .style(container::secondary)
+            .width(Length::Fill)
+            .height(30);
+
+        let action_line = container(self.action_area.view(self))
+            .width(Length::Fill)
+            .height(30);
+
+        let status_area = container(column![status_line, action_line]).align_bottom(Length::Fill);
 
         let popup = container(
             container(container(self.popup.view(self)).style(container::rounded_box))
@@ -177,11 +200,11 @@ impl App {
         .height(Length::Fill)
         .width(Length::Fill);
 
-        stack![main_view, popup, info].into()
+        stack![main_view, popup, status_area].into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        keyboard::listen().filter_map(|event| match event {
+        let mut subscriptions = vec![keyboard::listen().filter_map(|event| match event {
             keyboard::Event::KeyPressed { modified_key, .. } => {
                 if modified_key == Key::Character(":".into()) {
                     return Some(Message::ShowCmdline);
@@ -192,7 +215,18 @@ impl App {
                 None
             }
             _ => None,
-        })
+        })];
+
+        if self.document.is_some() {
+            subscriptions.push(
+                self.document
+                    .as_ref()
+                    .unwrap()
+                    .subscription()
+                    .map(Message::Document),
+            );
+        }
+        Subscription::batch(subscriptions)
     }
 
     fn theme(&self) -> Option<iced::Theme> {
@@ -222,19 +256,19 @@ impl Popup {
     }
 }
 
-impl NotificationArea {
+impl ActionArea {
     fn view<'a>(&'a self, app: &'a App) -> Element<'a, Message> {
         match self {
-            NotificationArea::None => row![].into(),
-            NotificationArea::Info(msg) => text!("{msg}")
+            ActionArea::None => row![].into(),
+            ActionArea::Info(msg) => text!("{msg}")
                 .align_y(Alignment::Center)
                 .style(text::secondary)
                 .into(),
-            NotificationArea::Error(err) => text!("{err}")
+            ActionArea::Error(err) => text!("{err}")
                 .align_y(Alignment::Center)
                 .style(text::danger)
                 .into(),
-            NotificationArea::Cmdline => app.cmdline.view().map(Message::CmdLine),
+            ActionArea::Cmdline => app.cmdline.view().map(Message::CmdLine),
         }
     }
 }

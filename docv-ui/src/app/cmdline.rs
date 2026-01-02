@@ -5,7 +5,7 @@ use iced::widget::{self, container, text_input};
 use iced::{Element, Length, Task};
 use pest::Parser;
 use pest_derive::Parser;
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
@@ -26,6 +26,7 @@ pub enum Action {
     Open(PathBuf),
     ShowErrors,
     ShowInfo,
+    SetPage(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -46,6 +47,9 @@ impl Cmdline {
                 Action::Open(filepath) => Task::done(crate::app::Message::OpenFile(filepath)),
                 Action::ShowErrors => Task::done(crate::app::Message::ShowErrors),
                 Action::ShowInfo => Task::done(crate::app::Message::ShowInfo),
+                Action::SetPage(number) => Task::done(crate::app::Message::Document(
+                    crate::app::document::Message::SetPageNumber(number),
+                )),
             },
             Message::OnCommandInput(cmd) => {
                 if cmd.is_empty() {
@@ -55,14 +59,15 @@ impl Cmdline {
 
                 Task::none()
             }
-            Message::OnCommandSubmit => {
+            Message::OnCommandSubmit => Task::batch([
                 Task::perform(parse_cmd(self.cmd.clone()), |res| match res {
                     Ok(action) => crate::app::Message::CmdLine(Message::Action(action)),
                     Err(err) => crate::app::Message::ErrorOccurred(crate::error::Error::Command {
                         source: err,
                     }),
-                })
-            }
+                }),
+                Task::done(crate::app::Message::CleanScreen),
+            ]),
             Message::FocusInput => {
                 self.cmd = String::from(":");
 
@@ -136,6 +141,11 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
                 }
                 Rule::errors => Ok(Action::ShowErrors),
                 Rule::info => Ok(Action::ShowInfo),
+                Rule::page_number => {
+                    let number = inner_verb.as_str().parse().context(error::TypeConvertion)?;
+
+                    Ok(Action::SetPage(number))
+                }
                 _ => Err(error::Error::Parser {
                     message: String::from("Unexpected token"),
                 }
@@ -150,6 +160,8 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
 }
 
 mod error {
+    use std::str::FromStr;
+
     use snafu::Snafu;
 
     #[derive(Debug, Snafu)]
@@ -157,5 +169,8 @@ mod error {
     pub(super) enum Error {
         #[snafu(display("{message}"))]
         Parser { message: String },
+
+        #[snafu(display("Can't convert type"))]
+        TypeConvertion { source: <usize as FromStr>::Err },
     }
 }

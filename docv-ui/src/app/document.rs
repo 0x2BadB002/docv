@@ -4,41 +4,43 @@ use std::{
 };
 
 use iced::{
-    Element, Length, Task,
+    Element, Length, Subscription, Task,
+    keyboard::{self, Event, Key},
     widget::{column, container, scrollable, text},
 };
 use snafu::ResultExt;
 
 use crate::Error;
 
-#[derive(Debug)]
-pub enum Message {}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Document {
-    file: Arc<Mutex<docv_pdf::Document>>,
-    title: String,
-    pages: Vec<docv_pdf::Page>,
-    page_count: usize,
+    pub title: Arc<str>,
+    pub page_count: usize,
+    current_page_index: usize,
 
     view: View,
+    file: Arc<Mutex<docv_pdf::Document>>,
+    pages: Arc<[docv_pdf::Page]>,
 }
 
-#[derive(Debug, Default)]
-enum View {
-    #[default]
+#[derive(Debug, Clone)]
+pub enum View {
     RawData,
+}
+
+#[derive(Debug)]
+pub enum Message {
+    ChangeView(View),
+    NextPage,
+    PrevPage,
+    SetPageNumber(usize),
 }
 
 impl Document {
     pub fn read_from_path(path: PathBuf) -> Result<Self, Error> {
         let mut file = docv_pdf::Document::from_path(&path).context(crate::error::PdfSnafu)?;
 
-        let title = file
-            .info()
-            .title
-            .clone()
-            .unwrap_or_else(|| path.file_name().unwrap().to_string_lossy().to_string());
+        let title = path.file_name().unwrap().to_string_lossy().to_string();
 
         let pages = file
             .pages()
@@ -47,12 +49,13 @@ impl Document {
         let page_count = file.pages().count();
 
         Ok(Document {
-            file: Arc::new(Mutex::new(file)),
-            pages,
+            title: title.into(),
             page_count,
-            title,
+            current_page_index: 0,
 
-            view: View::default(),
+            view: View::RawData,
+            file: Arc::new(Mutex::new(file)),
+            pages: pages.into(),
         })
     }
 
@@ -61,15 +64,79 @@ impl Document {
     }
 
     pub fn update(&mut self, msg: Message) -> Task<crate::app::Message> {
-        match msg {}
+        match msg {
+            Message::ChangeView(view) => {
+                self.view = view;
+
+                Task::none()
+            }
+            Message::NextPage => match self.view {
+                View::RawData => {
+                    if self.current_page_index >= self.page_count - 1 {
+                        self.current_page_index = self.page_count - 1;
+
+                        return Task::none();
+                    }
+
+                    self.current_page_index = self.current_page_index.saturating_add(1);
+
+                    Task::none()
+                }
+            },
+            Message::PrevPage => match self.view {
+                View::RawData => {
+                    self.current_page_index = self.current_page_index.saturating_sub(1);
+
+                    Task::none()
+                }
+            },
+            Message::SetPageNumber(number) => match self.view {
+                View::RawData => {
+                    if number > self.page_count {
+                        return Task::none();
+                    }
+
+                    self.current_page_index = number.saturating_sub(1);
+
+                    Task::none()
+                }
+            },
+        }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
         match self.view {
-            View::RawData => scrollable(container(text!("{:#?}", self.pages)).padding(20))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into(),
+            View::RawData => {
+                let page = &self.pages[self.current_page_index];
+
+                scrollable(container(text!("{:#?}", page)).padding(20))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()
+            }
+        }
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        keyboard::listen().filter_map(|event| match event {
+            Event::KeyPressed { modified_key, .. } => {
+                if let Key::Character(c) = modified_key {
+                    match c.as_str() {
+                        "j" => Some(Message::NextPage),
+                        "k" => Some(Message::PrevPage),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+    }
+
+    pub fn current_page(&self) -> usize {
+        match self.view {
+            View::RawData => self.current_page_index + 1,
         }
     }
 
