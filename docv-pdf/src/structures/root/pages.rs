@@ -11,7 +11,6 @@ pub struct Error(Box<error::Error>);
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct Page {
     contents: Vec<Stream>,
     resources: Dictionary,
@@ -405,6 +404,62 @@ impl InheritableAttributes {
     }
 }
 
+impl std::fmt::Display for Page {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "--- Content ---")?;
+        for content in self.contents.iter() {
+            write!(f, "\n{}", content)?;
+        }
+        writeln!(f, "--- End Content ---\n")?;
+
+        if let Some(metadata) = self.metadata.as_ref() {
+            writeln!(f, "--- Metadata ---")?;
+            write!(f, "{}", metadata)?;
+            writeln!(f, "--- End Metadata ---\n")?;
+        }
+
+        writeln!(f, "user_unit: {}, ", self.user_unit)?;
+        writeln!(f, "rotate: {}, ", self.rotate)?;
+        writeln!(f, "media_box: {}, ", self.media_box)?;
+        writeln!(f, "crop_box: {}, ", self.crop_box)?;
+        writeln!(f, "bleed_box: {}, ", self.bleed_box)?;
+        writeln!(f, "trim_box: {}, ", self.trim_box)?;
+        writeln!(f, "art_box: {}", self.art_box)?;
+        writeln!(f, "tabs: {}", self.tabs)?;
+        if let Some(ref date) = self.last_modified {
+            writeln!(f, "last_modified: {}", date)?;
+        }
+        if let Some(dur) = self.dur {
+            writeln!(f, "dur: {}", dur)?;
+        }
+        if let Some(ref id) = self.id {
+            writeln!(f, "id: {:?}", id)?;
+        }
+        if let Some(pz) = self.pz {
+            writeln!(f, "pz: {}", pz)?;
+        }
+        if let Some(ref template) = self.template_instantiated {
+            writeln!(f, "template_instantiated: {}", template)?;
+        }
+        if let Some(struct_parents) = self.struct_parents {
+            writeln!(f, "struct_parents: {}", struct_parents)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for TabOrder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TabOrder::Row => write!(f, "Row"),
+            TabOrder::Column => write!(f, "Column"),
+            TabOrder::Structure => write!(f, "Structure"),
+            TabOrder::None => write!(f, "None"),
+        }
+    }
+}
+
 mod error {
     use snafu::Snafu;
 
@@ -442,5 +497,48 @@ mod error {
             object: Object,
             source: crate::types::array::Error,
         },
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use snafu::Whatever;
+
+    use crate::Document;
+
+    use super::*;
+    use std::{fs, path::PathBuf, sync::LazyLock};
+
+    static EXAMPLES: LazyLock<PathBuf> = LazyLock::new(|| {
+        let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        dir.pop();
+        dir.push("example_files");
+        dir
+    });
+
+    #[snafu::report]
+    #[test]
+    fn print_pages_example_files() -> std::result::Result<(), Whatever> {
+        for example in
+            fs::read_dir(EXAMPLES.clone()).whatever_context("Failed to read directory")?
+        {
+            let entry = example.whatever_context("Failed to directory entry")?;
+            let path = entry.path();
+
+            let mut document = Document::from_path(&path)
+                .with_whatever_context(|_| format!("Failed to open file {}", path.display()))?;
+
+            let result = document
+                .pages()
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .with_whatever_context(|_| {
+                    format!("Failed to iterate over pages for file {}", path.display())
+                })?;
+
+            for page in result.iter() {
+                let _ = format!("{}", page);
+            }
+        }
+        Ok(())
     }
 }

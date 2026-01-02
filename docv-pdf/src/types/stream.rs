@@ -176,6 +176,49 @@ fn apply_filter(data: &[u8], filter: &StreamFilterType, content_length: usize) -
     }
 }
 
+impl std::fmt::Display for Stream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let filter = match self.dictionary.get("Filter") {
+            Some(object) => {
+                let filter = process_filter(object);
+
+                if filter.is_err() {
+                    return writeln!(f, "--- Data compressed ---");
+                }
+
+                filter.unwrap()
+            }
+            None => StreamFilterType::default(),
+        };
+        let content_length = self.dictionary.get("Length");
+        if content_length.is_none() {
+            return writeln!(f, "--- Data compressed ---");
+        }
+        let content_length = content_length.unwrap().as_integer();
+        if content_length.is_err() {
+            return writeln!(f, "--- Data compressed ---");
+        }
+        let content_length = content_length.unwrap();
+
+        match filter {
+            StreamFilterType::None => {
+                let text = String::from_utf8_lossy(self.data.as_ref());
+                writeln!(f, "{}", text)
+            }
+            _ => {
+                let data = apply_filter(&self.data, &filter, content_length);
+                if data.is_err() {
+                    return writeln!(f, "--- Data compressed ---");
+                }
+                let data = data.unwrap();
+
+                let text = String::from_utf8_lossy(&data);
+                writeln!(f, "{}", text)
+            }
+        }
+    }
+}
+
 mod error {
     use snafu::Snafu;
 

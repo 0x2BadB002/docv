@@ -136,7 +136,7 @@ impl Document {
             View::RawData => {
                 let page = &self.pages[self.current_page_index];
 
-                scrollable(container(text!("{:#?}", page)).padding(20))
+                scrollable(container(text!("{}", page)).padding(20))
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .into()

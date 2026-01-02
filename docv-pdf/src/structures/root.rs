@@ -92,12 +92,12 @@ impl Root {
 
         let names = dictionary
             .get("Names")
-            .map(|object| object.as_dictionary())
-            .transpose()
-            .context(error::InvalidType)?
-            .map(Names::from_dictionary)
-            .transpose()
-            .context(error::InvalidNamesDictionary)?;
+            .map(|object| -> Result<Names> {
+                let object = object.direct(objects);
+                let object = object.as_dictionary().context(error::InvalidType)?;
+                Ok(Names::from_dictionary(object).context(error::InvalidNamesDictionary)?)
+            })
+            .transpose()?;
 
         let outlines = dictionary
             .get("Outlines")

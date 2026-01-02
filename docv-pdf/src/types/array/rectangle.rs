@@ -77,3 +77,9 @@ impl Rectangle {
         self.top - self.bottom
     }
 }
+
+impl std::fmt::Display for Rectangle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Rectangle {}x{}", self.right, self.top)
+    }
+}
