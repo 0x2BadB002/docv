@@ -45,7 +45,7 @@ impl Document {
             .map_err(|err| err.into())
             .context(crate::error::Document)?;
 
-        let root_object = objects
+        let root = objects
             .get_object(&metadata.root_id)
             .context(error::Object {
                 object: metadata.root_id,
@@ -53,7 +53,7 @@ impl Document {
             .map_err(|err| err.into())
             .context(crate::error::Document)?;
 
-        let root = Root::from_object(root_object, &mut objects)
+        let root = Root::from_object(root, &mut objects)
             .context(error::Root)
             .map_err(|err| err.into())
             .context(crate::error::Document)?;

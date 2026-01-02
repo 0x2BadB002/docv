@@ -1,11 +1,12 @@
 use snafu::{OptionExt, ResultExt, Snafu};
 
+pub mod names;
 pub mod pages;
 pub mod version;
 
 use crate::{
     objects::Objects,
-    structures::root::{pages::PagesTreeNode, version::Version},
+    structures::root::{names::Names, pages::PagesTreeNode, version::Version},
     types::{IndirectReference, Object},
 };
 
@@ -17,32 +18,32 @@ type Result<T> = std::result::Result<T, Error>;
 #[allow(dead_code)]
 pub struct Root {
     pub version: Option<Version>,
-    pub extensions: Option<Object>,
+    pub _extensions: Option<Object>,
     pub pages: PagesTreeNode,
-    pub page_labels: Option<Object>,
-    pub names: Option<Object>,
-    pub dests: Option<Object>,
-    pub viewer_preferences: Option<Object>,
+    pub _page_labels: Option<Object>,
+    pub names: Option<Names>,
+    pub _dests: Option<Object>,
+    pub _viewer_preferences: Option<Object>,
     pub page_layout: PageLayout,
     pub page_mode: PageMode,
     pub outlines: Option<IndirectReference>,
     pub threads: Option<IndirectReference>,
-    pub open_action: Option<Object>,
-    pub aa: Option<Object>,
-    pub uri: Option<Object>,
-    pub acro_form: Option<Object>,
+    pub _open_action: Option<Object>,
+    pub _aa: Option<Object>,
+    pub _uri: Option<Object>,
+    pub _acro_form: Option<Object>,
     pub metadata: Option<IndirectReference>,
-    pub struct_tree_root: Option<Object>,
-    pub mark_info: Option<Object>,
-    pub lang: Option<Object>,
-    pub spider_info: Option<Object>,
-    pub output_intents: Option<Object>,
-    pub piece_info: Option<Object>,
-    pub oc_properities: Option<Object>,
-    pub perms: Option<Object>,
-    pub legal: Option<Object>,
-    pub requirements: Option<Object>,
-    pub collection: Option<Object>,
+    pub _struct_tree_root: Option<Object>,
+    pub _mark_info: Option<Object>,
+    pub _lang: Option<Object>,
+    pub _spider_info: Option<Object>,
+    pub _output_intents: Option<Object>,
+    pub _piece_info: Option<Object>,
+    pub _oc_properities: Option<Object>,
+    pub _perms: Option<Object>,
+    pub _legal: Option<Object>,
+    pub _requirements: Option<Object>,
+    pub _collection: Option<Object>,
     pub needs_rendering: Option<bool>,
 }
 
@@ -87,7 +88,16 @@ impl Root {
                 .context(error::InvalidType)?,
             None,
         )
-        .context(error::FailedCreatePages)?;
+        .context(error::InvalidPages)?;
+
+        let names = dictionary
+            .get("Names")
+            .map(|object| object.as_dictionary())
+            .transpose()
+            .context(error::InvalidType)?
+            .map(Names::from_dictionary)
+            .transpose()
+            .context(error::InvalidNamesDictionary)?;
 
         let outlines = dictionary
             .get("Outlines")
@@ -162,28 +172,28 @@ impl Root {
             threads,
             metadata,
             needs_rendering,
-            extensions: None,
-            page_labels: None,
-            names: None,
-            dests: None,
-            viewer_preferences: None,
+            names,
             page_layout,
             page_mode,
-            open_action: None,
-            aa: None,
-            uri: None,
-            acro_form: None,
-            struct_tree_root: None,
-            mark_info: None,
-            lang: None,
-            spider_info: None,
-            output_intents: None,
-            piece_info: None,
-            oc_properities: None,
-            perms: None,
-            legal: None,
-            requirements: None,
-            collection: None,
+            _extensions: None,
+            _page_labels: None,
+            _dests: None,
+            _viewer_preferences: None,
+            _open_action: None,
+            _aa: None,
+            _uri: None,
+            _acro_form: None,
+            _struct_tree_root: None,
+            _mark_info: None,
+            _lang: None,
+            _spider_info: None,
+            _output_intents: None,
+            _piece_info: None,
+            _oc_properities: None,
+            _perms: None,
+            _legal: None,
+            _requirements: None,
+            _collection: None,
         })
     }
 }
@@ -209,8 +219,13 @@ mod error {
         PagesNotFound,
 
         #[snafu(display("Failed to instantate `Pages` struct"))]
-        FailedCreatePages {
+        InvalidPages {
             source: crate::structures::root::pages::Error,
+        },
+
+        #[snafu(display("Invalid `Names` struct"))]
+        InvalidNamesDictionary {
+            source: crate::structures::root::names::Error,
         },
 
         #[snafu(display("Unexpected value for `PageLayout`. Got = `{value}`"))]
