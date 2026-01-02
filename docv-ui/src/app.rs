@@ -103,7 +103,9 @@ impl App {
                 async move { Document::read_from_path(filepath) },
                 |res| match res {
                     Ok(doc) => Message::DocumentReady(doc),
-                    Err(err) => Message::ErrorOccurred(err),
+                    Err(err) => {
+                        Message::ErrorOccurred(crate::error::Error::Document { source: err })
+                    }
                 },
             ),
             Message::DocumentReady(doc) => {
@@ -172,7 +174,7 @@ impl App {
         };
 
         let current_file = match self.document.as_ref() {
-            Some(doc) => container(text!("  {}  ", doc.title))
+            Some(doc) => container(text!("  {}  ", doc.filename))
                 .style(container::success)
                 .center_y(Length::Fill)
                 .height(Length::Fill),
@@ -186,6 +188,7 @@ impl App {
             .height(30);
 
         let action_line = container(self.action_area.view(self))
+            .center_y(Length::Fill)
             .width(Length::Fill)
             .height(30);
 
@@ -227,6 +230,12 @@ impl App {
                     .map(Message::Document),
             );
         }
+
+        if let ActionArea::Error(_) = self.action_area {
+            subscriptions
+                .push(iced::time::every(iced::time::seconds(5)).map(|_| Message::CleanScreen));
+        }
+
         Subscription::batch(subscriptions)
     }
 
@@ -243,16 +252,19 @@ impl Popup {
                 Some(doc) => doc.view_info().map(Message::Document),
                 None => column![].into(),
             },
-            Popup::Errors => {
-                scrollable(
-                    column(app.errors.iter().map(|err| {
-                        container(text!("{:#?}", snafu::Report::from_error(err))).into()
-                    }))
-                    .width(Length::Fill)
-                    .padding(10),
-                )
-                .into()
-            }
+            Popup::Errors => scrollable(
+                column(app.errors.iter().map(|err| {
+                    container(column![
+                        text!("{:#?}", snafu::Report::from_error(err)),
+                        iced::widget::rule::horizontal(2)
+                    ])
+                    .into()
+                }))
+                .spacing(4)
+                .width(Length::Fill)
+                .padding(10),
+            )
+            .into(),
         }
     }
 }
@@ -261,11 +273,11 @@ impl ActionArea {
     fn view<'a>(&'a self, app: &'a App) -> Element<'a, Message> {
         match self {
             ActionArea::None => row![].into(),
-            ActionArea::Info(msg) => text!("{msg}")
+            ActionArea::Info(msg) => text!(" {msg}")
                 .align_y(Alignment::Center)
                 .style(text::secondary)
                 .into(),
-            ActionArea::Error(err) => text!("{err}")
+            ActionArea::Error(err) => text!(" {err}")
                 .align_y(Alignment::Center)
                 .style(text::danger)
                 .into(),

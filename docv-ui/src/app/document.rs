@@ -1,3 +1,4 @@
+use core::str;
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -8,13 +9,16 @@ use iced::{
     keyboard::{self, Event, Key},
     widget::{column, container, scrollable, text},
 };
-use snafu::ResultExt;
+use snafu::{ResultExt, Snafu};
 
-use crate::Error;
+#[derive(Debug, Snafu)]
+pub struct Error(error::Error);
+type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
 pub struct Document {
     pub title: Arc<str>,
+    pub filename: Arc<str>,
     pub page_count: usize,
     current_page_index: usize,
 
@@ -37,19 +41,26 @@ pub enum Message {
 }
 
 impl Document {
-    pub fn read_from_path(path: PathBuf) -> Result<Self, Error> {
-        let mut file = docv_pdf::Document::from_path(&path).context(crate::error::PdfSnafu)?;
+    pub fn read_from_path(path: PathBuf) -> Result<Self> {
+        let mut file = docv_pdf::Document::from_path(&path).context(error::Pdf)?;
 
-        let title = path.file_name().unwrap().to_string_lossy().to_string();
+        let filename = path.file_name().unwrap().to_string_lossy().to_string();
+
+        let title = file
+            .info()
+            .title
+            .clone()
+            .unwrap_or_else(|| filename.clone());
 
         let pages = file
             .pages()
             .collect::<std::result::Result<Vec<_>, docv_pdf::Error>>()
-            .context(crate::error::PdfSnafu)?;
+            .context(error::Pdf)?;
         let page_count = file.pages().count();
 
         Ok(Document {
             title: title.into(),
+            filename: filename.into(),
             page_count,
             current_page_index: 0,
 
@@ -75,7 +86,11 @@ impl Document {
                     if self.current_page_index >= self.page_count - 1 {
                         self.current_page_index = self.page_count - 1;
 
-                        return Task::none();
+                        return Task::done(crate::app::Message::ErrorOccurred(
+                            crate::error::Error::Document {
+                                source: error::Error::LastPage.into(),
+                            },
+                        ));
                     }
 
                     self.current_page_index = self.current_page_index.saturating_add(1);
@@ -85,6 +100,14 @@ impl Document {
             },
             Message::PrevPage => match self.view {
                 View::RawData => {
+                    if self.current_page_index == 0 {
+                        return Task::done(crate::app::Message::ErrorOccurred(
+                            crate::error::Error::Document {
+                                source: error::Error::FirstPage.into(),
+                            },
+                        ));
+                    }
+
                     self.current_page_index = self.current_page_index.saturating_sub(1);
 
                     Task::none()
@@ -93,7 +116,11 @@ impl Document {
             Message::SetPageNumber(number) => match self.view {
                 View::RawData => {
                     if number > self.page_count {
-                        return Task::none();
+                        return Task::done(crate::app::Message::ErrorOccurred(
+                            crate::error::Error::Document {
+                                source: error::Error::SetPage.into(),
+                            },
+                        ));
                     }
 
                     self.current_page_index = number.saturating_sub(1);
@@ -225,5 +252,25 @@ impl Document {
             .padding(10),
         )
         .into()
+    }
+}
+
+mod error {
+    use snafu::Snafu;
+
+    #[derive(Debug, Snafu)]
+    #[snafu(visibility(pub(super)), context(suffix(false)))]
+    pub(super) enum Error {
+        #[snafu(display("Error working with PDF file"))]
+        Pdf { source: docv_pdf::Error },
+
+        #[snafu(display("You are already on first page"))]
+        FirstPage,
+
+        #[snafu(display("You are already on last page"))]
+        LastPage,
+
+        #[snafu(display("Incorrect page number"))]
+        SetPage,
     }
 }

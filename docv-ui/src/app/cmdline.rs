@@ -5,7 +5,7 @@ use iced::widget::{self, container, text_input};
 use iced::{Element, Length, Task};
 use pest::Parser;
 use pest_derive::Parser;
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
@@ -110,29 +110,26 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
             }
         })?
         .next()
-        .ok_or_else(|| error::Error::Parser {
-            message: String::from("No top token parsed"),
+        .context(error::Parser {
+            message: "No top token parsed",
         })?
         .into_inner();
 
-    let first = cmd.next().ok_or_else(|| error::Error::Parser {
-        message: String::from("No verb token parsed"),
+    let first = cmd.next().context(error::Parser {
+        message: "No verb token parsed",
     })?;
 
     match first.as_rule() {
         Rule::verb => {
-            let inner_verb = first
-                .into_inner()
-                .next()
-                .ok_or_else(|| error::Error::Parser {
-                    message: String::from("No inner verb parsed"),
-                })?;
+            let inner_verb = first.into_inner().next().context(error::Parser {
+                message: "No inner verb parsed",
+            })?;
 
             match inner_verb.as_rule() {
                 Rule::quit => Ok(Action::Quit),
                 Rule::open => {
-                    let filename = cmd.next().ok_or_else(|| error::Error::Parser {
-                        message: String::from("Unexpected filename argument"),
+                    let filename = cmd.next().context(error::Parser {
+                        message: "Unexpected filename argument",
                     })?;
 
                     let path = PathBuf::from(filename.as_str());

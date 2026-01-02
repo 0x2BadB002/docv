@@ -13,4 +13,7 @@ pub enum Error {
 
     #[snafu(display("Error parsing command"))]
     Command { source: crate::app::cmdline::Error },
+
+    #[snafu(transparent)]
+    Document { source: crate::app::document::Error },
 }
