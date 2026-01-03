@@ -17,6 +17,7 @@ type Result<T> = std::result::Result<T, Error>;
 pub struct Xref {
     prev: Option<u64>,
     xref_stm: Option<u64>,
+    first_byte: usize,
     size: usize,
     version: Version,
     entries: BTreeMap<IndirectReference, XrefEntry>,
@@ -56,15 +57,16 @@ impl Xref {
     }
 
     pub fn read_startxref(&mut self, input: &[u8], filesize: usize) -> Result<u64> {
-        let (_, version) = read_version(input).ok().context(error::ParseFile {
+        let (_, (version, first_byte)) = read_version(input).ok().context(error::ParseFile {
             section: "version",
             offset: 0usize,
         })?;
         self.version = Version::from_str(version).context(error::InvalidVersion)?;
+        self.first_byte = first_byte;
 
         let offset = ((filesize as f64).log10().floor() + 1.0) as usize + 23;
-
         let start = filesize - offset;
+
         let (_, offset) = read_startxref(&input[start..])
             .ok()
             .context(error::ParseFile {
@@ -76,7 +78,7 @@ impl Xref {
     }
 
     pub fn read_table(&mut self, input: &[u8], offset: u64) -> Result<XrefMetadata> {
-        let start = offset as usize;
+        let start = self.first_byte + offset as usize;
         let (remained, data) = read_xref(&input[start..]).ok().context(error::ParseFile {
             section: "xref",
             offset: start,
@@ -134,7 +136,7 @@ impl Xref {
                 };
                 let entry = if parsed_entry.occupied {
                     XrefEntry::Occupied {
-                        offset: parsed_entry.offset,
+                        offset: self.first_byte + parsed_entry.offset,
                     }
                 } else {
                     XrefEntry::Free {
@@ -299,7 +301,7 @@ impl Xref {
                     gen_id: entry_data[2],
                 };
                 let entry = XrefEntry::Occupied {
-                    offset: entry_data[1],
+                    offset: self.first_byte + entry_data[1],
                 };
 
                 self.insert_entry(key, entry);

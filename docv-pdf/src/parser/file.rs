@@ -57,9 +57,8 @@ pub struct XrefTableEntry {
 
 /// Parses the PDF version header from the input bytes.
 ///
-/// The PDF header must start with `%PDF-` followed by a major and minor
-/// version number separated by a period. Only versions 1.0-1.7 and 2.0
-/// are supported.
+/// The PDF header must start with `%PDF-` followed by a
+/// major and minor version number separated by a period.
 ///
 /// # Example
 /// ```text
@@ -72,13 +71,17 @@ pub struct XrefTableEntry {
 /// # Returns
 /// `Result` containing:
 /// - Remaining input after parsing
-/// - `Version` enum variant on success
+/// - Version &str on success
+/// - File starting offset
 /// - `Error` if parsing fails or version is unsupported
-pub fn read_version(input: &[u8]) -> Result<(&[u8], &str), Error<&[u8]>> {
-    let header = preceded(tag("%PDF-"), recognize((digit1, tag("."), digit1)));
+#[allow(clippy::complexity)]
+pub fn read_version(input: &[u8]) -> Result<(&[u8], (&str, usize)), Error<&[u8]>> {
+    let (input, junk_data) = take_until("%PDF-").parse(input).finish()?;
+    let header = preceded(take(5usize), recognize((digit1, tag("."), digit1)));
 
     header
         .map_res(|data| str::from_utf8(data))
+        .map(|data| (data, junk_data.len()))
         .parse(input)
         .finish()
 }
@@ -353,7 +356,7 @@ mod tests {
             );
 
             if case.expected {
-                let (actual_remainder, actual_version) = result.unwrap();
+                let (actual_remainder, (actual_version, _)) = result.unwrap();
                 assert_eq!(
                     actual_version,
                     *case.expected_version.as_ref().unwrap(),
