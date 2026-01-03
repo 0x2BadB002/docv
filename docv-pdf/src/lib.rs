@@ -7,7 +7,7 @@ mod structures;
 mod types;
 
 pub use document::Document;
-pub use structures::root::pages::Page;
+pub use structures::page::Page;
 
 #[derive(Debug, snafu::Snafu)]
 pub struct Error(error::Error);

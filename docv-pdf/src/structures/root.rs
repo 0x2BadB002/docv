@@ -1,14 +1,14 @@
 use snafu::{OptionExt, ResultExt, Snafu};
 
-pub mod names;
-pub mod pages;
-pub mod version;
-
 use crate::{
     objects::Objects,
-    structures::root::{names::Names, pages::PagesTreeNode, version::Version},
+    structures::root::{names::Names, pages_tree::PagesTreeNode, version::Version},
     types::{IndirectReference, Object},
 };
+
+pub mod names;
+pub mod pages_tree;
+pub mod version;
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
@@ -218,9 +218,9 @@ mod error {
         #[snafu(display("`Pages` field not found"))]
         PagesNotFound,
 
-        #[snafu(display("Failed to instantate `Pages` struct"))]
+        #[snafu(display("Failed to instantate `PagesTreeNode` struct"))]
         InvalidPages {
-            source: crate::structures::root::pages::Error,
+            source: crate::structures::root::pages_tree::Error,
         },
 
         #[snafu(display("Invalid `Names` struct"))]

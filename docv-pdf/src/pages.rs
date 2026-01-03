@@ -2,7 +2,10 @@ use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     objects::Objects,
-    structures::root::pages::{InheritableAttributes, Page, PagesTreeNode},
+    structures::{
+        page::Page,
+        root::pages_tree::{InheritableAttributes, PagesTreeNode},
+    },
     types::IndirectReference,
 };
 
@@ -191,12 +194,12 @@ mod error {
 
         #[snafu(display("Failed to read page data"))]
         InvalidPage {
-            source: crate::structures::root::pages::Error,
+            source: crate::structures::page::Error,
         },
 
         #[snafu(display("Failed to read page tree node data"))]
         InvalidPageNode {
-            source: crate::structures::root::pages::Error,
+            source: crate::structures::root::pages_tree::Error,
         },
     }
 }
