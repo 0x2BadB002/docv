@@ -7,6 +7,8 @@ use pest::Parser;
 use pest_derive::Parser;
 use snafu::{OptionExt, ResultExt, Snafu};
 
+use crate::app::document::View;
+
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
 type Result<T> = std::result::Result<T, Error>;
@@ -27,6 +29,7 @@ pub enum Action {
     ShowErrors,
     ShowInfo,
     SetPage(usize),
+    OpenRawView,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +52,9 @@ impl Cmdline {
                 Action::ShowInfo => Task::done(crate::app::Message::ShowInfo),
                 Action::SetPage(number) => Task::done(crate::app::Message::Document(
                     crate::app::document::Message::SetPageNumber(number),
+                )),
+                Action::OpenRawView => Task::done(crate::app::Message::Document(
+                    crate::app::document::Message::ChangeView(View::RawData),
                 )),
             },
             Message::OnCommandInput(cmd) => {
@@ -143,6 +149,7 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
 
                     Ok(Action::SetPage(number))
                 }
+                Rule::raw_file => Ok(Action::OpenRawView),
                 _ => Err(error::Error::Parser {
                     message: String::from("Unexpected token"),
                 }

@@ -5,10 +5,10 @@ quit   = !{ "quit" | "q" }
 open   = !{ "open" | "o" }
 errors = !{ "errors" }
 info   = !{ "info" }
-
 page_number = !{ ASCII_DIGIT+ }
+raw_file = !{ "raw" }
 
-verb = !{ quit | open | errors | info | page_number }
+verb = !{ quit | open | errors | info | page_number | raw_file }
 
 arg = !{ (!WHITESPACE ~ ANY)+ }
 
