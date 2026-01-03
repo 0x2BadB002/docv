@@ -253,6 +253,7 @@ mod tests {
             input: &'static [u8],
             expected: bool,
             expected_version: Option<&'static str>,
+            expected_offset: Option<usize>,
             expected_remainder: Option<&'static [u8]>,
         }
 
@@ -263,6 +264,7 @@ mod tests {
                 input: b"%PDF-1.0",
                 expected: true,
                 expected_version: Some("1.0"),
+                expected_offset: Some(0),
                 expected_remainder: Some(b""),
             },
             TestCase {
@@ -270,6 +272,7 @@ mod tests {
                 input: b"%PDF-1.1",
                 expected: true,
                 expected_version: Some("1.1"),
+                expected_offset: Some(0),
                 expected_remainder: Some(b""),
             },
             TestCase {
@@ -277,6 +280,7 @@ mod tests {
                 input: b"%PDF-1.2",
                 expected: true,
                 expected_version: Some("1.2"),
+                expected_offset: Some(0),
                 expected_remainder: Some(b""),
             },
             TestCase {
@@ -284,6 +288,7 @@ mod tests {
                 input: b"%PDF-1.3",
                 expected: true,
                 expected_version: Some("1.3"),
+                expected_offset: Some(0),
                 expected_remainder: Some(b""),
             },
             TestCase {
@@ -291,6 +296,7 @@ mod tests {
                 input: b"%PDF-1.4",
                 expected: true,
                 expected_version: Some("1.4"),
+                expected_offset: Some(0),
                 expected_remainder: Some(b""),
             },
             TestCase {
@@ -298,6 +304,7 @@ mod tests {
                 input: b"%PDF-1.5",
                 expected: true,
                 expected_version: Some("1.5"),
+                expected_offset: Some(0),
                 expected_remainder: Some(b""),
             },
             TestCase {
@@ -305,6 +312,7 @@ mod tests {
                 input: b"%PDF-1.6",
                 expected: true,
                 expected_version: Some("1.6"),
+                expected_offset: Some(0),
                 expected_remainder: Some(b""),
             },
             TestCase {
@@ -312,6 +320,7 @@ mod tests {
                 input: b"%PDF-1.7",
                 expected: true,
                 expected_version: Some("1.7"),
+                expected_offset: Some(0),
                 expected_remainder: Some(b""),
             },
             TestCase {
@@ -319,6 +328,7 @@ mod tests {
                 input: b"%PDF-2.0",
                 expected: true,
                 expected_version: Some("2.0"),
+                expected_offset: Some(0),
                 expected_remainder: Some(b""),
             },
             TestCase {
@@ -326,7 +336,34 @@ mod tests {
                 input: b"%PDF-1.7some content",
                 expected: true,
                 expected_version: Some("1.7"),
+                expected_offset: Some(0),
                 expected_remainder: Some(b"some content"),
+            },
+            // Test case for junk data before version header
+            TestCase {
+                name: "valid version with junk data before",
+                input: b"junk\x00\x01\x02 data before%PDF-1.7",
+                expected: true,
+                expected_version: Some("1.7"),
+                expected_offset: Some(19),
+                expected_remainder: Some(b""),
+            },
+            TestCase {
+                name: "valid version with extensive junk data before",
+                input:
+                    b"%% some comment\n% another comment\n\nbinary\x00\x01\x02data%PDF-2.0more data",
+                expected: true,
+                expected_version: Some("2.0"),
+                expected_offset: Some(48),
+                expected_remainder: Some(b"more data"),
+            },
+            TestCase {
+                name: "valid version with mixed whitespace junk",
+                input: b"\n\r\n\t   %PDF-1.4",
+                expected: true,
+                expected_version: Some("1.4"),
+                expected_offset: Some(7),
+                expected_remainder: Some(b""),
             },
             // Invalid versions
             TestCase {
@@ -334,6 +371,7 @@ mod tests {
                 input: b"1.7",
                 expected: false,
                 expected_version: None,
+                expected_offset: None,
                 expected_remainder: None,
             },
             TestCase {
@@ -341,6 +379,23 @@ mod tests {
                 input: b"%PDF-1",
                 expected: false,
                 expected_version: None,
+                expected_offset: None,
+                expected_remainder: None,
+            },
+            TestCase {
+                name: "invalid only junk data no version",
+                input: b"junk data without version",
+                expected: false,
+                expected_version: None,
+                expected_offset: None,
+                expected_remainder: None,
+            },
+            TestCase {
+                name: "invalid empty input",
+                input: b"",
+                expected: false,
+                expected_version: None,
+                expected_offset: None,
                 expected_remainder: None,
             },
         ];
@@ -356,7 +411,7 @@ mod tests {
             );
 
             if case.expected {
-                let (actual_remainder, (actual_version, _)) = result.unwrap();
+                let (actual_remainder, (actual_version, actual_offset)) = result.unwrap();
                 assert_eq!(
                     actual_version,
                     *case.expected_version.as_ref().unwrap(),
@@ -364,6 +419,14 @@ mod tests {
                     case.name,
                     case.expected_version,
                     actual_version
+                );
+                assert_eq!(
+                    actual_offset,
+                    case.expected_offset.unwrap(),
+                    "Test '{}' failed: expected offset: {:?}, got: {:?}",
+                    case.name,
+                    case.expected_offset,
+                    actual_offset
                 );
                 assert_eq!(
                     actual_remainder,
