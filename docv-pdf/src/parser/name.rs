@@ -6,14 +6,17 @@ use nom::{
     sequence::preceded,
 };
 
-use crate::parser::whitespace::{is_delimiter, is_whitespace};
+use crate::{
+    parser::whitespace::{is_delimiter, is_whitespace},
+    types::Name,
+};
 
 /// Parses a PDF name from a byte slice as defined in the PDF 2.0 standard.
 ///
 /// PDF names start with a slash (`/`) and may contain escaped characters using `#` followed by
 /// two hexadecimal digits. Unescaped characters are treated as-is, and the result is a string
 /// that includes all decoded characters.
-pub fn name(input: &[u8]) -> IResult<&[u8], String> {
+pub fn name(input: &[u8]) -> IResult<&[u8], Name> {
     fn is_regular_symbol(c: u8) -> bool {
         c != b'#' && (b'!'..=b'~').contains(&c) && !is_delimiter(c) && !is_whitespace(c)
     }
@@ -21,7 +24,7 @@ pub fn name(input: &[u8]) -> IResult<&[u8], String> {
     let sym_code_parser = preceded(tag("#"), take_while_m_n(2, 2, |c: u8| c.is_hex_digit()))
         .map(|code| u8::from_str_radix(str::from_utf8(code).unwrap(), 16).unwrap());
 
-    let name_parser = (
+    let name = (
         take_while(is_regular_symbol),
         many0((sym_code_parser, take_while(is_regular_symbol))),
     )
@@ -36,9 +39,10 @@ pub fn name(input: &[u8]) -> IResult<&[u8], String> {
             }
 
             String::from_utf8(result).map_err(|_| Error::new(input, ErrorKind::Fail))
-        });
+        })
+        .map(|res| Name::from(res));
 
-    preceded(tag("/"), name_parser).parse(input)
+    preceded(tag("/"), name).parse(input)
 }
 
 #[cfg(test)]
@@ -200,6 +204,8 @@ mod test {
 
             if case.expected {
                 let (actual_remainder, result_str) = result.unwrap();
+                let result_str = result_str.to_string();
+
                 assert_eq!(
                     &result_str,
                     case.expected_result.as_ref().unwrap(),

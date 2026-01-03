@@ -129,7 +129,7 @@ impl Root {
                 use PageLayout::*;
 
                 let name = obj.as_name().context(error::InvalidType)?;
-                match name {
+                match name.as_str() {
                     "SinglePage" => Ok(SinglePage),
                     "OneColumn" => Ok(OneColumn),
                     "TwoColumnLeft" => Ok(TwoColumnLeft),
@@ -150,7 +150,7 @@ impl Root {
                 use PageMode::*;
 
                 let name = obj.as_name().context(error::InvalidType)?;
-                match name {
+                match name.as_str() {
                     "UseNone" => Ok(UseNone),
                     "UseOutlines" => Ok(UseOutlines),
                     "UseThumbs" => Ok(UseThumbs),

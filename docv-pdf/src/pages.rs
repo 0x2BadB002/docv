@@ -119,7 +119,7 @@ impl<'a> Pages<'a> {
                     .and_then(|obj| obj.as_name().ok())
                     .context(error::FieldNotFound { field: "Type" })?;
 
-                match node_type {
+                match node_type.as_str() {
                     "Page" => {
                         return Ok(Some(
                             Page::from_dictionary(

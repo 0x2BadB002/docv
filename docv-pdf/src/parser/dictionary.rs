@@ -42,7 +42,8 @@ pub fn dictionary(input: &[u8]) -> IResult<&[u8], Dictionary> {
     let key_value = (
         name,
         preceded(many0(alt((whitespace, comment, eol))), object),
-    );
+    )
+        .map(|(name, object)| (name.to_string(), object));
 
     let contents = many0(delimited(
         many0(alt((whitespace, comment, eol))),
@@ -109,9 +110,9 @@ mod tests {
                     ("Key1".to_string(), Object::Numeric(Numeric::Integer(1))),
                     (
                         "Key2".to_string(),
-                        Object::String(PdfString::Literal("two".to_string())),
+                        Object::String(PdfString::Literal("two".into())),
                     ),
-                    ("Key3".to_string(), Object::Name("three".to_string())),
+                    ("Key3".to_string(), Object::Name("three".into())),
                 ])),
                 expected_remainder: Some(b""),
             },
@@ -123,9 +124,9 @@ mod tests {
                     ("Key1".to_string(), Object::Numeric(Numeric::Integer(1))),
                     (
                         "Key2".to_string(),
-                        Object::String(PdfString::Literal("two".to_string())),
+                        Object::String(PdfString::Literal("two".into())),
                     ),
-                    ("Key3".to_string(), Object::Name("three".to_string())),
+                    ("Key3".to_string(), Object::Name("three".into())),
                 ])),
                 expected_remainder: Some(b""),
             },
@@ -170,7 +171,7 @@ mod tests {
                 input: b"<</Type/XRef/Size 139>>",
                 expected: true,
                 expected_result: Some(Dictionary::from([
-                    ("Type".to_string(), Object::Name(String::from("XRef"))),
+                    ("Type".to_string(), Object::Name("XRef".into())),
                     ("Size".to_string(), Object::Numeric(Numeric::Integer(139))),
                 ])),
                 expected_remainder: Some(b""),

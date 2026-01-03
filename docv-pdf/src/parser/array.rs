@@ -81,7 +81,7 @@ mod test {
                     vec![
                         Object::Numeric(Numeric::Integer(1)),
                         Object::String(PdfString::Literal("two".to_string())),
-                        Object::Name(String::from("three")),
+                        Object::Name("three".into()),
                     ]
                     .into(),
                 ),
@@ -95,7 +95,7 @@ mod test {
                     vec![
                         Object::Numeric(Numeric::Integer(1)),
                         Object::String(PdfString::Literal("two".to_string())),
-                        Object::Name(String::from("three")),
+                        Object::Name("three".into()),
                     ]
                     .into(),
                 ),

@@ -1,6 +1,7 @@
 pub mod array;
 pub mod dictionary;
 pub mod indirect_object;
+pub mod name;
 pub mod numeric;
 pub mod object;
 pub mod stream;
@@ -10,6 +11,7 @@ pub use array::Array;
 pub use array::rectangle::Rectangle;
 pub use dictionary::Dictionary;
 pub use indirect_object::{IndirectObject, IndirectReference};
+pub use name::Name;
 pub use numeric::Numeric;
 pub use object::Object;
 pub use stream::Stream;

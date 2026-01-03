@@ -1,6 +1,6 @@
 use snafu::{OptionExt, ResultExt, Snafu};
 
-use crate::types::{Dictionary, IndirectReference, Rectangle};
+use crate::types::{Dictionary, IndirectReference, Object, Rectangle};
 
 #[derive(Debug, Snafu)]
 pub struct Error(error::Error);
@@ -44,7 +44,7 @@ impl PagesTreeNode {
 
 #[derive(Debug, Default, Clone)]
 pub struct InheritableAttributes {
-    pub resources: Option<Dictionary>,
+    pub resources: Option<Object>,
     pub media_box: Option<Rectangle>,
     pub crop_box: Option<Rectangle>,
     pub rotate: Option<u16>,
@@ -52,11 +52,7 @@ pub struct InheritableAttributes {
 
 impl InheritableAttributes {
     fn read(&mut self, dictionary: &Dictionary) -> Result<()> {
-        let resources = dictionary
-            .get("Resources")
-            .map(|object| object.as_dictionary().cloned())
-            .transpose()
-            .context(error::InvalidType { field: "Resources" })?;
+        let resources = dictionary.get("Resources").cloned();
 
         let media_box = dictionary
             .get("MediaBox")

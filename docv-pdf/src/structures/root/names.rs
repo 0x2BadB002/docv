@@ -57,11 +57,5 @@ mod error {
     pub(super) enum Error {
         #[snafu(display("Required field `{field}` not found"))]
         FieldNotFound { field: &'static str },
-
-        #[snafu(display("Invalid object type for field `{field}`"))]
-        InvalidType {
-            field: &'static str,
-            source: crate::types::object::Error,
-        },
     }
 }

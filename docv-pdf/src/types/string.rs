@@ -155,15 +155,9 @@ impl PdfString {
     }
 }
 
-impl From<String> for PdfString {
-    fn from(value: String) -> Self {
-        Self::Literal(value)
-    }
-}
-
-impl<'a> From<&'a str> for PdfString {
-    fn from(value: &'a str) -> Self {
-        Self::Literal(value.to_string())
+impl<T: std::convert::Into<String>> From<T> for PdfString {
+    fn from(value: T) -> Self {
+        Self::Literal(value.into())
     }
 }
 

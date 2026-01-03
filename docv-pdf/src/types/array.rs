@@ -358,8 +358,8 @@ mod tests {
 
         // Test 9: Array with name values
         let name_array = Object::Array(Array::from(vec![
-            Object::Name("Type".to_string()),
-            Object::Name("Font".to_string()),
+            Object::Name("Type".into()),
+            Object::Name("Font".into()),
         ]));
 
         let name_vec: Vec<String> =

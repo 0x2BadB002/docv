@@ -2,9 +2,11 @@ use snafu::{OptionExt, ResultExt, Snafu};
 
 use crate::{
     objects::Objects,
-    structures::root::pages_tree::InheritableAttributes,
+    structures::{page::resources::Resources, root::pages_tree::InheritableAttributes},
     types::{Array, Dictionary, Rectangle, Stream, string::Date},
 };
+
+mod resources;
 
 #[derive(Debug, Snafu)]
 #[snafu(source(from(error::Error, Box::new)))]
@@ -12,9 +14,10 @@ pub struct Error(Box<error::Error>);
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Page {
     contents: Vec<Stream>,
-    resources: Dictionary,
+    resources: Resources,
     user_unit: f64,
     rotate: u16,
 
@@ -80,13 +83,18 @@ impl Page {
             .transpose()?
             .unwrap_or_else(Vec::new);
 
-        let resources = dictionary
-            .get("Resources")
-            .map(|object| object.direct(objects).as_dictionary().cloned())
-            .transpose()
-            .context(error::InvalidType { field: "Resources" })?
-            .or_else(|| inheritable_attrs.resources.clone())
-            .context(error::FieldNotFound { field: "Resources" })?;
+        let resources = {
+            let dictionary = dictionary
+                .get("Resources")
+                .or(inheritable_attrs.resources.as_ref())
+                .context(error::FieldNotFound { field: "Resources" })?;
+            let dictionary = dictionary.direct(objects);
+            let dictionary = dictionary
+                .as_dictionary()
+                .context(error::InvalidType { field: "Resources" })?;
+
+            Resources::from_dictionary(dictionary, objects).context(error::InvalidResources)?
+        };
 
         let media_box = dictionary
             .get("MediaBox")
@@ -251,7 +259,7 @@ impl Page {
             .map(|object| object.as_name())
             .transpose()
             .context(error::InvalidType { field: "Tabs" })?
-            .map(|name| match name {
+            .map(|name| match name.as_str() {
                 "R" => TabOrder::Row,
                 "C" => TabOrder::Column,
                 "S" => TabOrder::Structure,
@@ -317,6 +325,10 @@ impl Page {
 
 impl std::fmt::Display for Page {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "--- Resources ---")?;
+        write!(f, "{}", self.resources)?;
+        writeln!(f, "--- End Resources ---\n")?;
+
         write!(f, "--- Content ---")?;
         for content in self.contents.iter() {
             write!(f, "\n{}", content)?;
@@ -400,6 +412,11 @@ mod error {
             source: crate::types::string::Error,
         },
 
+        #[snafu(display("Invalid resources struct"))]
+        InvalidResources {
+            source: crate::structures::page::resources::Error,
+        },
+
         #[snafu(display("Unexpected node type. Got = `{got}`. Expected `Page` or `Pages`]"))]
         UnexpectedNodeType { got: String },
 
@@ -429,7 +446,7 @@ mod test {
 
     #[snafu::report]
     #[test]
-    fn print_pages_example_files() -> std::result::Result<(), Whatever> {
+    fn format_pages_example_files() -> std::result::Result<(), Whatever> {
         for example in
             fs::read_dir(EXAMPLES.clone()).whatever_context("Failed to read directory")?
         {

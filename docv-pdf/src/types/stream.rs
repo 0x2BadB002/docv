@@ -121,7 +121,10 @@ fn process_filter(filter: &Object) -> Result<StreamFilterType> {
     match filter {
         Object::Name(name) => match name.as_str() {
             "FlateDecode" => Ok(StreamFilterType::FlateDecode),
-            _ => Err(error::Error::InvalidStreamFilter { name: name.clone() }.into()),
+            _ => Err(error::Error::InvalidStreamFilter {
+                name: name.to_string(),
+            }
+            .into()),
         },
         Object::Array(pipeline) => Ok(StreamFilterType::PipeLine(
             pipeline
@@ -264,20 +267,20 @@ mod tests {
 
         let cases = vec![
             TestCase {
-                input: Object::Name("FlateDecode".to_string()),
+                input: Object::Name("FlateDecode".into()),
                 expected_ok: true,
                 description: "Valid single filter",
             },
             TestCase {
-                input: Object::Name("InvalidFilter".to_string()),
+                input: Object::Name("InvalidFilter".into()),
                 expected_ok: false,
                 description: "Invalid single filter",
             },
             TestCase {
                 input: Object::Array(
                     vec![
-                        Object::Name("FlateDecode".to_string()),
-                        Object::Name("FlateDecode".to_string()),
+                        Object::Name("FlateDecode".into()),
+                        Object::Name("FlateDecode".into()),
                     ]
                     .into(),
                 ),
@@ -287,8 +290,8 @@ mod tests {
             TestCase {
                 input: Object::Array(
                     vec![
-                        Object::Name("InvalidFilter".to_string()),
-                        Object::Name("FlateDecode".to_string()),
+                        Object::Name("InvalidFilter".into()),
+                        Object::Name("FlateDecode".into()),
                     ]
                     .into(),
                 ),
@@ -487,7 +490,7 @@ mod tests {
         let cases = vec![
             TestCase {
                 dictionary: Dictionary::from([
-                    ("Type".to_string(), Object::Name("XObject".to_string())),
+                    ("Type".to_string(), Object::Name("XObject".into())),
                     ("Length".to_string(), Object::Numeric(Numeric::Integer(4))),
                 ]),
                 data: b"test".to_vec(),
@@ -497,7 +500,7 @@ mod tests {
             },
             TestCase {
                 dictionary: Dictionary::from([
-                    ("Type".to_string(), Object::Name("XObject".to_string())),
+                    ("Type".to_string(), Object::Name("XObject".into())),
                     (
                         "Field".to_string(),
                         Object::String(PdfString::Literal(String::from("123456"))),
@@ -511,11 +514,8 @@ mod tests {
             },
             TestCase {
                 dictionary: Dictionary::from([
-                    ("Type".to_string(), Object::Name("XObject".to_string())),
-                    (
-                        "Filter".to_string(),
-                        Object::Name("FlateDecode".to_string()),
-                    ),
+                    ("Type".to_string(), Object::Name("XObject".into())),
+                    ("Filter".to_string(), Object::Name("FlateDecode".into())),
                     ("Length".to_string(), Object::Numeric(Numeric::Integer(5))),
                 ]),
                 data: {
@@ -529,11 +529,8 @@ mod tests {
             },
             TestCase {
                 dictionary: Dictionary::from([
-                    ("Type".to_string(), Object::Name("XObject".to_string())),
-                    (
-                        "Filter".to_string(),
-                        Object::Name("FlateDecode".to_string()),
-                    ),
+                    ("Type".to_string(), Object::Name("XObject".into())),
+                    ("Filter".to_string(), Object::Name("FlateDecode".into())),
                 ]),
                 data: b"compressed".to_vec(),
                 expected_data: None,
@@ -542,12 +539,9 @@ mod tests {
             },
             TestCase {
                 dictionary: Dictionary::from([
-                    ("Type".to_string(), Object::Name("XObject".to_string())),
+                    ("Type".to_string(), Object::Name("XObject".into())),
                     ("Length".to_string(), Object::Numeric(Numeric::Integer(4))),
-                    (
-                        "ColorSpace".to_string(),
-                        Object::Name("DeviceRGB".to_string()),
-                    ),
+                    ("ColorSpace".to_string(), Object::Name("DeviceRGB".into())),
                 ]),
                 data: b"test".to_vec(),
                 expected_data: Some(b"test".to_vec()),

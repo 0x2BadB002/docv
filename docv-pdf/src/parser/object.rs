@@ -144,7 +144,7 @@ mod tests {
                 name: "name object",
                 input: b"/FontName",
                 expected: true,
-                expected_value: Some(Object::Name("FontName".to_string())),
+                expected_value: Some(Object::Name("FontName".into())),
                 expected_remainder: Some(b""),
             },
             // Null test
@@ -164,7 +164,7 @@ mod tests {
                     vec![
                         Object::Numeric(Numeric::Integer(1)),
                         Object::Numeric(Numeric::Integer(2)),
-                        Object::Name("Three".to_string()),
+                        Object::Name("Three".into()),
                     ]
                     .into(),
                 )),

@@ -6,7 +6,7 @@ use snafu::{OptionExt, Snafu};
 use crate::{
     objects::Objects,
     types::{
-        Array, Dictionary, IndirectObject, IndirectReference, Numeric, PdfString, Stream,
+        Array, Dictionary, IndirectObject, IndirectReference, Name, Numeric, PdfString, Stream,
         array::ArrayBuilder,
     },
 };
@@ -55,7 +55,7 @@ pub enum Object {
     /// String values, can be literal "(string)" or hexadecimal "<ffffaa>"
     String(PdfString),
     /// Names starting with '/' followed by a sequence of characters
-    Name(std::string::String),
+    Name(Name),
     /// Null object represented by the 'null' literal
     Null,
     /// Array object, contains 0 or more Objects
@@ -199,7 +199,7 @@ impl Object {
     ///
     /// # Errors
     /// Returns `Error::UnexpectedObjectType` if the object is not a name.
-    pub fn as_name(&self) -> Result<&str> {
+    pub fn as_name(&self) -> Result<&Name> {
         match self {
             Object::Name(name) => Ok(name),
             _ => Err(error::Error::UnexpectedObjectType {
