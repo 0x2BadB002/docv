@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
 use iced::widget::{self, container, text_input};
@@ -25,7 +25,7 @@ pub struct Cmdline {
 #[derive(Debug, Clone)]
 pub enum Action {
     Quit,
-    Open(PathBuf),
+    Open(Arc<Path>),
     ShowErrors,
     ShowInfo,
     SetPage(usize),
@@ -46,19 +46,27 @@ static INPUT_ID: LazyLock<widget::Id> = LazyLock::new(widget::Id::unique);
 impl Cmdline {
     pub fn update(&mut self, message: Message) -> Task<crate::app::Message> {
         match message {
-            Message::Action(action) => match action {
-                Action::Quit => Task::done(crate::app::Message::Quit),
-                Action::Open(filepath) => Task::done(crate::app::Message::OpenFile(filepath)),
-                Action::ShowErrors => Task::done(crate::app::Message::ShowErrors),
-                Action::ShowInfo => Task::done(crate::app::Message::ShowInfo),
-                Action::SetPage(number) => Task::done(crate::app::Message::Document(
-                    crate::app::document::Message::SetPageNumber(number),
-                )),
-                Action::OpenRawView => Task::done(crate::app::Message::Document(
-                    crate::app::document::Message::ChangeView(View::RawData),
-                )),
-                Action::SetTheme(data) => Task::done(crate::app::Message::SetTheme(theme(&data))),
-            },
+            Message::Action(action) => {
+                let action = match action {
+                    Action::Quit => Task::done(crate::app::Message::Quit),
+                    Action::Open(filepath) => {
+                        Task::done(crate::app::Message::OpenFile(Some(filepath)))
+                    }
+                    Action::ShowErrors => Task::done(crate::app::Message::ShowErrors),
+                    Action::ShowInfo => Task::done(crate::app::Message::ShowInfo),
+                    Action::SetPage(number) => Task::done(crate::app::Message::Document(
+                        crate::app::document::Message::SetPageNumber(number),
+                    )),
+                    Action::OpenRawView => Task::done(crate::app::Message::Document(
+                        crate::app::document::Message::ChangeView(View::RawData),
+                    )),
+                    Action::SetTheme(data) => {
+                        Task::done(crate::app::Message::SetTheme(theme(&data)))
+                    }
+                };
+
+                Task::done(crate::app::Message::CleanScreen).chain(action)
+            }
             Message::OnCommandInput(cmd) => {
                 if cmd.is_empty() {
                     return Task::done(crate::app::Message::CleanScreen);
@@ -67,13 +75,14 @@ impl Cmdline {
 
                 Task::none()
             }
-            Message::OnCommandSubmit => Task::batch([
+            Message::OnCommandSubmit => {
                 Task::perform(parse_cmd(self.cmd.clone()), |res| match res {
                     Ok(action) => crate::app::Message::CmdLine(Message::Action(action)),
-                    Err(err) => crate::app::Message::ErrorOccurred(err.into()),
-                }),
-                Task::done(crate::app::Message::CleanScreen),
-            ]),
+                    Err(err) => crate::app::Message::ErrorOccurred(
+                        crate::Error::Command { source: err }.into(),
+                    ),
+                })
+            }
             Message::FocusInput => {
                 self.cmd = String::from(":");
 
@@ -134,11 +143,13 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
             match inner_verb.as_rule() {
                 Rule::quit => Ok(Action::Quit),
                 Rule::open => {
-                    let filename = cmd.next().context(error::Parser {
-                        message: "Expected filename argument",
-                    })?;
-
-                    let path = PathBuf::from(filename.as_str());
+                    let path = cmd
+                        .next()
+                        .filter(|name| !matches!(name.as_rule(), Rule::EOI))
+                        .map(|name| Into::<Arc<Path>>::into(PathBuf::from(name.as_str())))
+                        .context(error::Parser {
+                            message: "Expected file argument",
+                        })?;
 
                     Ok(Action::Open(path))
                 }

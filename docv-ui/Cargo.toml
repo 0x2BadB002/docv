@@ -9,8 +9,9 @@ docv-pdf = { path = "../docv-pdf" }
 iced = { version = "0.14", features = ["tokio", "wgpu"] }
 pest = { version = "2.8", features = ["pretty-print"] }
 pest_derive = "2.8"
-tokio = { version = "1.48", features = ["rt", "macros", "parking_lot", "fs"] }
+tokio = { version = "1.48", features = ["rt", "macros", "parking_lot"] }
 tracing = "0.1"
 snafu = { version = "0.8", features = ["rust_1_81"] }
+ashpd = "0.12.0"
 
 [build-dependencies]

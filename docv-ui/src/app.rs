@@ -1,23 +1,29 @@
-use std::path::PathBuf;
+use std::{
+    env,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
+use ashpd::desktop::file_chooser::{FileFilter, SelectedFiles};
 use iced::{
     Alignment, Element, Length, Subscription, Task,
+    alignment::Horizontal,
     keyboard::{self, Key, key::Named},
-    widget::{column, container, row, scrollable, stack, text},
+    widget::{button, column, container, row, scrollable, stack, text},
 };
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 
 use crate::{Error, Result, app::document::Document};
 
 pub mod cmdline;
 pub mod document;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Message {
     CmdLine(cmdline::Message),
     Document(document::Message),
 
-    OpenFile(PathBuf),
+    OpenFile(Option<Arc<Path>>),
     DocumentReady(Document),
 
     SetTheme(iced::Theme),
@@ -27,7 +33,7 @@ pub enum Message {
     ShowCmdline,
     CleanScreen,
 
-    ErrorOccurred(Error),
+    ErrorOccurred(Arc<Error>),
 }
 
 #[derive(Default, Debug)]
@@ -39,7 +45,7 @@ pub struct App {
 
     theme: Option<iced::Theme>,
 
-    errors: Vec<Error>,
+    errors: Vec<Arc<Error>>,
 }
 
 #[derive(Debug, Default)]
@@ -63,7 +69,7 @@ pub fn run(filename: Option<PathBuf>) -> Result<()> {
     let boot = move || {
         let file = filename
             .as_ref()
-            .map(Document::read_from_path)
+            .map(|path| Document::read_from_path(path))
             .transpose()
             .map_err(|err| crate::error::Error::Document { source: err });
 
@@ -112,14 +118,27 @@ impl App {
                 Some(doc) => doc.update(msg),
                 None => Task::none(),
             },
-            Message::OpenFile(filepath) => Task::perform(
-                async move { Document::read_from_path(&filepath).context(crate::error::Document) },
-                |res| match res {
-                    Ok(doc) => Message::DocumentReady(doc),
-                    Err(err) => Message::ErrorOccurred(err.into()),
-                },
-            ),
+            Message::OpenFile(filepath) => {
+                if filepath.is_some() {
+                    Task::perform(
+                        async move {
+                            Document::read_from_path(&filepath.unwrap())
+                                .context(crate::error::Document)
+                        },
+                        |res| match res {
+                            Ok(doc) => Message::DocumentReady(doc),
+                            Err(err) => Message::ErrorOccurred(err.into()),
+                        },
+                    )
+                } else {
+                    Task::perform(get_file_with_dialog(), |res| match res {
+                        Ok(doc) => Message::DocumentReady(doc),
+                        Err(err) => Message::ErrorOccurred(err.into()),
+                    })
+                }
+            }
             Message::DocumentReady(doc) => {
+                self.errors.clear();
                 self.document = Some(doc);
 
                 Task::none()
@@ -145,7 +164,7 @@ impl App {
                 self.cmdline.focus().map(Message::CmdLine)
             }
             Message::ErrorOccurred(error) => {
-                self.action_area = ActionArea::Error(format!("{error}"));
+                self.action_area = ActionArea::Error(error.to_string());
 
                 self.errors.push(error);
 
@@ -171,10 +190,19 @@ impl App {
             .as_ref()
             .map(|doc| doc.view().map(Message::Document))
             .unwrap_or_else(|| {
-                container(text("No file opened").style(text::primary))
-                    .height(Length::Fill)
-                    .padding(20)
-                    .into()
+                container(
+                    column![
+                        text("No file opened").style(text::primary),
+                        button(container(text("   Open file...   ")).padding(3))
+                            .style(button::primary)
+                            .on_press_with(|| Message::OpenFile(None))
+                    ]
+                    .spacing(10)
+                    .align_x(Horizontal::Center),
+                )
+                .center(Length::Fill)
+                .padding(20)
+                .into()
             });
 
         let status_line = match self.document.as_ref() {
@@ -295,4 +323,30 @@ impl ActionArea {
             ActionArea::Cmdline => app.cmdline.view().map(Message::CmdLine),
         }
     }
+}
+
+async fn get_file_with_dialog() -> Result<Document> {
+    let file = SelectedFiles::open_file()
+        .title("open a file to read")
+        .accept_label("read")
+        .current_folder(env::current_dir().unwrap_or(".".into()))
+        .context(crate::error::ModalDialog)?
+        .modal(true)
+        .filter(FileFilter::new("PDF Document").mimetype("application/pdf"))
+        .send()
+        .await
+        .context(crate::error::ModalDialog)?
+        .response()
+        .context(crate::error::ModalDialog)?;
+
+    let path = file
+        .uris()
+        .iter()
+        .next()
+        .context(crate::error::NoFile)?
+        .to_file_path()
+        .ok()
+        .context(crate::error::Path)?;
+
+    Ok(Document::read_from_path(&path).context(crate::error::Document)?)
 }

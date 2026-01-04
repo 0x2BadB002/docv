@@ -1,5 +1,7 @@
 use snafu::Snafu;
 
+pub type Result<T> = std::result::Result<T, Box<Error>>;
+
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(super)), context(suffix(false)))]
 pub enum Error {
@@ -9,21 +11,18 @@ pub enum Error {
     #[snafu(display("Error within Iced"))]
     Iced { source: iced::Error },
 
-    #[snafu(display("Error parsing command"))]
+    #[snafu(display("{}", source.to_string()))]
     Command { source: crate::app::cmdline::Error },
 
     #[snafu(display("{}", source.to_string()))]
     Document { source: crate::app::document::Error },
-}
 
-impl From<crate::app::document::Error> for crate::Error {
-    fn from(value: crate::app::document::Error) -> Self {
-        Error::Document { source: value }.into()
-    }
-}
+    #[snafu(display("No file specified"))]
+    NoFile,
 
-impl From<crate::app::cmdline::Error> for crate::Error {
-    fn from(value: crate::app::cmdline::Error) -> Self {
-        Error::Command { source: value }.into()
-    }
+    #[snafu(display("Modal dialog error"))]
+    ModalDialog { source: ashpd::Error },
+
+    #[snafu(display("Failed to convert path"))]
+    Path,
 }

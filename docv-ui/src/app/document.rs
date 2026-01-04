@@ -1,6 +1,6 @@
 use core::str;
 use std::{
-    path::PathBuf,
+    path::Path,
     sync::{Arc, Mutex},
 };
 
@@ -12,7 +12,8 @@ use iced::{
 use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
-pub struct Error(error::Error);
+#[snafu(source(from(error::Error, Box::new)))]
+pub struct Error(Box<error::Error>);
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
@@ -32,7 +33,7 @@ pub enum View {
     RawData,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Message {
     ChangeView(View),
     NextPage,
@@ -41,8 +42,8 @@ pub enum Message {
 }
 
 impl Document {
-    pub fn read_from_path(path: &PathBuf) -> Result<Self> {
-        let mut file = docv_pdf::Document::from_path(&path).context(error::Pdf)?;
+    pub fn read_from_path(path: &Path) -> Result<Self> {
+        let mut file = docv_pdf::Document::from_path(path).context(error::Pdf)?;
 
         let filename = path.file_name().unwrap().to_string_lossy().to_string();
 
@@ -87,7 +88,10 @@ impl Document {
                         self.current_page_index = self.page_count - 1;
 
                         return Task::done(crate::app::Message::ErrorOccurred(
-                            Error::from(error::Error::LastPage).into(),
+                            crate::Error::Document {
+                                source: error::Error::LastPage.into(),
+                            }
+                            .into(),
                         ));
                     }
 
@@ -100,7 +104,10 @@ impl Document {
                 View::RawData => {
                     if self.current_page_index == 0 {
                         return Task::done(crate::app::Message::ErrorOccurred(
-                            Error::from(error::Error::FirstPage).into(),
+                            crate::Error::Document {
+                                source: error::Error::FirstPage.into(),
+                            }
+                            .into(),
                         ));
                     }
 
@@ -113,7 +120,10 @@ impl Document {
                 View::RawData => {
                     if number > self.page_count {
                         return Task::done(crate::app::Message::ErrorOccurred(
-                            Error::from(error::Error::SetPage).into(),
+                            crate::Error::Document {
+                                source: error::Error::SetPage.into(),
+                            }
+                            .into(),
                         ));
                     }
 

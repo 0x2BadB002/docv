@@ -1,4 +1,4 @@
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::Path};
 
 use snafu::{ResultExt, Snafu};
 
@@ -28,9 +28,9 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn from_path(path: &PathBuf) -> crate::Result<Self> {
+    pub fn from_path(path: &Path) -> crate::Result<Self> {
         let file = File::open(path)
-            .with_context(|_| error::OpenFile { path: path.clone() })
+            .with_context(|_| error::OpenFile { path })
             .map_err(|err| err.into())
             .context(crate::error::Document)?;
 
@@ -179,7 +179,7 @@ mod test {
     use snafu::Whatever;
 
     use super::*;
-    use std::{fs, sync::LazyLock};
+    use std::{fs, path::PathBuf, sync::LazyLock};
 
     static EXAMPLES: LazyLock<PathBuf> = LazyLock::new(|| {
         let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
