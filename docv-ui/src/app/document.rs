@@ -1,14 +1,12 @@
 use core::str;
-use std::{
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::{path::Path, sync::Arc};
 
 use iced::{
     Element, Length, Subscription, Task,
     keyboard::{self, Event, Key},
     widget::{column, container, scrollable, text},
 };
+use parking_lot::Mutex;
 use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
@@ -172,7 +170,7 @@ impl Document {
     }
 
     pub fn view_info(&self) -> Element<'_, Message> {
-        let file = self.file.lock().unwrap();
+        let file = self.file.lock();
         let info = file.info();
 
         container(
