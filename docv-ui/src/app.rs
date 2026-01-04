@@ -154,7 +154,11 @@ impl App {
                 iced::widget::operation::focus_previous()
             }
             Message::ShowInfo => {
-                self.popup = Popup::Info;
+                if self.document.is_some() {
+                    self.popup = Popup::Info;
+                } else {
+                    self.action_area = ActionArea::Info("No document opened");
+                }
 
                 iced::widget::operation::focus_previous()
             }
@@ -252,6 +256,9 @@ impl App {
                 if modified_key == Key::Character(":".into()) {
                     return Some(Message::ShowCmdline);
                 }
+                None
+            }
+            keyboard::Event::KeyReleased { modified_key, .. } => {
                 if modified_key == Key::Named(Named::Escape) {
                     return Some(Message::CleanScreen);
                 }
@@ -270,9 +277,13 @@ impl App {
             );
         }
 
-        if let ActionArea::Error(_) = self.action_area {
-            subscriptions
-                .push(iced::time::every(iced::time::seconds(5)).map(|_| Message::CleanScreen));
+        match self.action_area {
+            ActionArea::Error(_) | ActionArea::Info(_) => {
+                subscriptions
+                    .push(iced::time::every(iced::time::seconds(5)).map(|_| Message::CleanScreen));
+            }
+            ActionArea::Cmdline => {}
+            ActionArea::None => {}
         }
 
         Subscription::batch(subscriptions)
