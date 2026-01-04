@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use iced::widget::{self, container, text_input};
 use iced::{Element, Length, Task};
@@ -30,6 +30,7 @@ pub enum Action {
     ShowInfo,
     SetPage(usize),
     OpenRawView,
+    SetTheme(Arc<str>),
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +57,7 @@ impl Cmdline {
                 Action::OpenRawView => Task::done(crate::app::Message::Document(
                     crate::app::document::Message::ChangeView(View::RawData),
                 )),
+                Action::SetTheme(data) => Task::done(crate::app::Message::SetTheme(theme(&data))),
             },
             Message::OnCommandInput(cmd) => {
                 if cmd.is_empty() {
@@ -68,9 +70,7 @@ impl Cmdline {
             Message::OnCommandSubmit => Task::batch([
                 Task::perform(parse_cmd(self.cmd.clone()), |res| match res {
                     Ok(action) => crate::app::Message::CmdLine(Message::Action(action)),
-                    Err(err) => crate::app::Message::ErrorOccurred(crate::error::Error::Command {
-                        source: err,
-                    }),
+                    Err(err) => crate::app::Message::ErrorOccurred(err.into()),
                 }),
                 Task::done(crate::app::Message::CleanScreen),
             ]),
@@ -135,7 +135,7 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
                 Rule::quit => Ok(Action::Quit),
                 Rule::open => {
                     let filename = cmd.next().context(error::Parser {
-                        message: "Unexpected filename argument",
+                        message: "Expected filename argument",
                     })?;
 
                     let path = PathBuf::from(filename.as_str());
@@ -150,6 +150,14 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
                     Ok(Action::SetPage(number))
                 }
                 Rule::raw_file => Ok(Action::OpenRawView),
+                Rule::theme => {
+                    let name = cmd.next().context(error::Parser {
+                        message: "Expected name argument",
+                    })?;
+
+                    Ok(Action::SetTheme(name.as_str().into()))
+                }
+
                 _ => Err(error::Error::Parser {
                     message: String::from("Unexpected token"),
                 }
@@ -160,6 +168,36 @@ async fn parse_cmd(cmd: String) -> Result<Action> {
             message: String::from("Unexpected token"),
         }
         .into()),
+    }
+}
+
+fn theme(data: &str) -> iced::Theme {
+    use iced::Theme;
+
+    match data {
+        "Light" => Theme::Light,
+        "Dark" => Theme::Dark,
+        "Dracula" => Theme::Dracula,
+        "Nord" => Theme::Nord,
+        "SolarizedLight" => Theme::SolarizedLight,
+        "SolarizedDark" => Theme::SolarizedDark,
+        "GruvboxLight" => Theme::GruvboxLight,
+        "GruvboxDark" => Theme::GruvboxDark,
+        "CatppuccinLatte" => Theme::CatppuccinLatte,
+        "CatppuccinFrappe" => Theme::CatppuccinFrappe,
+        "CatppuccinMacchiato" => Theme::CatppuccinMacchiato,
+        "CatppuccinMocha" => Theme::CatppuccinMocha,
+        "TokyoNight" => Theme::TokyoNight,
+        "TokyoNightStorm" => Theme::TokyoNightStorm,
+        "TokyoNightLight" => Theme::TokyoNightLight,
+        "KanagawaWave" => Theme::KanagawaWave,
+        "KanagawaDragon" => Theme::KanagawaDragon,
+        "KanagawaLotus" => Theme::KanagawaLotus,
+        "Moonfly" => Theme::Moonfly,
+        "Nightfly" => Theme::Nightfly,
+        "Oxocarbon" => Theme::Oxocarbon,
+        "Ferra" => Theme::Ferra,
+        _ => Theme::Light,
     }
 }
 

@@ -41,7 +41,7 @@ pub enum Message {
 }
 
 impl Document {
-    pub fn read_from_path(path: PathBuf) -> Result<Self> {
+    pub fn read_from_path(path: &PathBuf) -> Result<Self> {
         let mut file = docv_pdf::Document::from_path(&path).context(error::Pdf)?;
 
         let filename = path.file_name().unwrap().to_string_lossy().to_string();
@@ -87,9 +87,7 @@ impl Document {
                         self.current_page_index = self.page_count - 1;
 
                         return Task::done(crate::app::Message::ErrorOccurred(
-                            crate::error::Error::Document {
-                                source: error::Error::LastPage.into(),
-                            },
+                            Error::from(error::Error::LastPage).into(),
                         ));
                     }
 
@@ -102,9 +100,7 @@ impl Document {
                 View::RawData => {
                     if self.current_page_index == 0 {
                         return Task::done(crate::app::Message::ErrorOccurred(
-                            crate::error::Error::Document {
-                                source: error::Error::FirstPage.into(),
-                            },
+                            Error::from(error::Error::FirstPage).into(),
                         ));
                     }
 
@@ -117,9 +113,7 @@ impl Document {
                 View::RawData => {
                     if number > self.page_count {
                         return Task::done(crate::app::Message::ErrorOccurred(
-                            crate::error::Error::Document {
-                                source: error::Error::SetPage.into(),
-                            },
+                            Error::from(error::Error::SetPage).into(),
                         ));
                     }
 

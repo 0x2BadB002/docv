@@ -1,0 +1,17 @@
+[package]
+name = "docv-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "docv"
+path = "src/main.rs"
+
+[dependencies]
+docv-pdf = { path = "../docv-pdf" }
+docv-ui = { path = "../docv-ui" }
+
+clap = { version = "4.5", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["parking_lot"] }
+snafu = { version = "0.8", features = ["rust_1_81"] }

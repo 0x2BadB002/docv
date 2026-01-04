@@ -7,8 +7,9 @@ errors = !{ "errors" }
 info   = !{ "info" }
 page_number = !{ ASCII_DIGIT+ }
 raw_file = !{ "raw" }
+theme = !{ "theme" }
 
-verb = !{ quit | open | errors | info | page_number | raw_file }
+verb = !{ quit | open | errors | info | page_number | raw_file | theme }
 
 arg = !{ (!WHITESPACE ~ ANY)+ }
 

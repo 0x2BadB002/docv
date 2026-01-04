@@ -825,6 +825,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "docv-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "docv-pdf",
+ "docv-ui",
+ "snafu",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "docv-pdf"
 version = "0.1.0"
 dependencies = [
@@ -840,7 +852,6 @@ dependencies = [
 name = "docv-ui"
 version = "0.0.1"
 dependencies = [
- "clap",
  "docv-pdf",
  "iced",
  "pest",
@@ -848,7 +859,6 @@ dependencies = [
  "snafu",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

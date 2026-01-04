@@ -31,7 +31,7 @@ pub enum Message {
 }
 
 #[derive(Default, Debug)]
-struct App {
+pub struct App {
     document: Option<document::Document>,
     cmdline: cmdline::Cmdline,
     popup: Popup,
@@ -60,27 +60,40 @@ enum ActionArea {
 }
 
 pub fn run(filename: Option<PathBuf>) -> Result<()> {
-    iced::application(
-        move || {
-            let filename = filename.clone();
-            let mut tasks = vec![Task::done(Message::SetTheme(iced::Theme::Nord))];
+    let boot = move || {
+        let file = filename
+            .as_ref()
+            .map(Document::read_from_path)
+            .transpose()
+            .map_err(|err| crate::error::Error::Document { source: err });
 
-            if let Some(filename) = filename {
-                tasks.push(Task::done(Message::OpenFile(filename)));
-            }
+        let (file, error_task) = if let Ok(file) = file {
+            (file, Task::none())
+        } else {
+            (
+                None,
+                Task::done(Message::ErrorOccurred(file.unwrap_err().into())),
+            )
+        };
 
-            (App::default(), Task::batch(tasks))
-        },
-        App::update,
-        App::view,
-    )
-    .subscription(App::subscription)
-    .theme(App::theme)
-    .title(App::title)
-    .resizable(true)
-    .centered()
-    .run()
-    .context(crate::error::IcedSnafu)
+        (
+            App {
+                document: file,
+                theme: Some(iced::Theme::Nord),
+                ..Default::default()
+            },
+            error_task,
+        )
+    };
+
+    Ok(iced::application(boot, App::update, App::view)
+        .subscription(App::subscription)
+        .theme(App::theme)
+        .title(App::title)
+        .resizable(true)
+        .centered()
+        .run()
+        .context(crate::error::Iced)?)
 }
 
 impl App {
@@ -100,12 +113,10 @@ impl App {
                 None => Task::none(),
             },
             Message::OpenFile(filepath) => Task::perform(
-                async move { Document::read_from_path(filepath) },
+                async move { Document::read_from_path(&filepath).context(crate::error::Document) },
                 |res| match res {
                     Ok(doc) => Message::DocumentReady(doc),
-                    Err(err) => {
-                        Message::ErrorOccurred(crate::error::Error::Document { source: err })
-                    }
+                    Err(err) => Message::ErrorOccurred(err.into()),
                 },
             ),
             Message::DocumentReady(doc) => {
@@ -166,26 +177,26 @@ impl App {
                     .into()
             });
 
-        let current_page = match self.document.as_ref() {
-            Some(doc) => container(text!("  {}/{}  ", doc.current_page(), doc.page_count))
-                .center_y(Length::Fill)
-                .height(Length::Fill),
+        let status_line = match self.document.as_ref() {
+            Some(doc) => {
+                let current_page =
+                    container(text!("  {}/{}  ", doc.current_page(), doc.page_count))
+                        .center_y(Length::Fill)
+                        .height(Length::Fill);
+
+                let current_file = container(text!("  {}  ", doc.filename))
+                    .style(container::success)
+                    .center_y(Length::Fill)
+                    .height(Length::Fill);
+
+                container(row![current_page, current_file].spacing(4))
+                    .center_y(Length::Fill)
+                    .style(container::secondary)
+                    .width(Length::Fill)
+                    .height(30)
+            }
             None => container(row![]),
         };
-
-        let current_file = match self.document.as_ref() {
-            Some(doc) => container(text!("  {}  ", doc.filename))
-                .style(container::success)
-                .center_y(Length::Fill)
-                .height(Length::Fill),
-            None => container(row![]),
-        };
-
-        let status_line = container(row![current_page, current_file].spacing(4))
-            .center_y(Length::Fill)
-            .style(container::secondary)
-            .width(Length::Fill)
-            .height(30);
 
         let action_line = container(self.action_area.view(self))
             .center_y(Length::Fill)
